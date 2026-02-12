@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
 	ContextMenu,
@@ -32,9 +32,12 @@ interface TreeRowProps {
 }
 
 function TreeRow({ node, depth, onNavigate }: TreeRowProps) {
+	const FAST_DOUBLE_CLICK_MS = 220;
+
 	const [expanded, setExpanded] = useState(false);
 	const [children, setChildren] = useState<ScanNode[] | null>(null);
 	const [loading, setLoading] = useState(false);
+	const lastClickAt = useRef(0);
 
 	const isDir = node.kind === "directory";
 
@@ -74,11 +77,17 @@ function TreeRow({ node, depth, onNavigate }: TreeRowProps) {
 		}
 	}, [node.id]);
 
-	const handleDoubleClick = useCallback(() => {
-		if (isDir) {
+	const handleClick = useCallback(() => {
+		const now = performance.now();
+		const clickDelta = now - lastClickAt.current;
+		lastClickAt.current = now;
+
+		void toggle();
+
+		if (isDir && clickDelta <= FAST_DOUBLE_CLICK_MS) {
 			onNavigate(node);
 		}
-	}, [isDir, node, onNavigate]);
+	}, [isDir, node, onNavigate, toggle]);
 
 	return (
 		<div>
@@ -86,8 +95,7 @@ function TreeRow({ node, depth, onNavigate }: TreeRowProps) {
 				<ContextMenuTrigger>
 					<button
 						type="button"
-						onClick={toggle}
-						onDoubleClick={handleDoubleClick}
+						onClick={handleClick}
 						className="group flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-accent/50"
 						style={{ paddingLeft: `${depth * 20 + 8}px` }}
 					>
