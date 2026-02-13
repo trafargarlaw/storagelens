@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::thread;
 
-use scanner::{ScanConfig, scan_tree, validate_root};
+use scanner::{scan_tree, validate_root, ScanConfig};
 use sysinfo::Disks;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -111,11 +111,7 @@ pub fn get_children(app: AppHandle, node_id: usize) -> Result<Vec<ScanNodeDto>, 
     let tree_guard = state.scan_tree.lock().unwrap();
     let tree = tree_guard.as_ref().ok_or("No scan data available")?;
 
-    let node = tree
-        .nodes
-        .get(node_id)
-        .ok_or("Invalid node ID")?;
-
+    let node = tree.nodes.get(node_id).ok_or("Invalid node ID")?;
     let children: Vec<ScanNodeDto> = node
         .children
         .iter()

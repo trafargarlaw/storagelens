@@ -3,9 +3,9 @@ import { Toaster } from "sonner";
 
 const RootLayout = () => (
 	<>
-		<div className="dark grid h-screen grid-rows-[2.75rem_minmax(0,1fr)] bg-background text-foreground antialiased">
+		<div className="dark grid h-screen grid-rows-[2.75rem_minmax(0,1fr)] text-foreground antialiased">
 			<div data-tauri-drag-region className="select-none" />
-			<div className="min-h-0">
+			<div className="min-h-0 w-full overflow-hidden">
 				<Outlet />
 			</div>
 		</div>

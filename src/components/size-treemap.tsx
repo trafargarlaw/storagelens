@@ -8,20 +8,13 @@ interface SizeTreemapProps {
 	onDrillDown: (node: ScanNode) => void;
 }
 
-// Teal-based palette that matches the app's primary color scheme
+// Updated palette using CSS variables for consistency
 const COLORS = [
-	"oklch(0.72 0.12 183)",
-	"oklch(0.65 0.11 185)",
-	"oklch(0.58 0.10 187)",
-	"oklch(0.52 0.09 189)",
-	"oklch(0.78 0.13 181)",
-	"oklch(0.48 0.08 191)",
-	"oklch(0.82 0.11 179)",
-	"oklch(0.55 0.10 186)",
-	"oklch(0.68 0.12 184)",
-	"oklch(0.45 0.07 192)",
-	"oklch(0.75 0.12 182)",
-	"oklch(0.62 0.11 186)",
+	"var(--chart-1)",
+	"var(--chart-2)",
+	"var(--chart-3)",
+	"var(--chart-4)",
+	"var(--chart-5)",
 ];
 
 interface TreemapEntry {
@@ -43,7 +36,7 @@ export function SizeTreemap({ nodes, onDrillDown }: SizeTreemapProps) {
 		if (nodes.length === 0) return [];
 
 		// Show top items, group the rest into "Other"
-		const MAX_ITEMS = 24;
+		const MAX_ITEMS = 30; // Increased slightly
 		const sorted = [...nodes].sort((a, b) => b.size_bytes - a.size_bytes);
 		const top = sorted.slice(0, MAX_ITEMS);
 		const rest = sorted.slice(MAX_ITEMS);
@@ -65,7 +58,7 @@ export function SizeTreemap({ nodes, onDrillDown }: SizeTreemapProps) {
 				displaySize: formatBytes(otherSize),
 				nodeId: -1,
 				kind: "other",
-				color: "oklch(0.35 0.02 200)",
+				color: "var(--muted)", // Use muted color for "others"
 			});
 		}
 
@@ -85,7 +78,7 @@ export function SizeTreemap({ nodes, onDrillDown }: SizeTreemapProps) {
 
 	if (data.length === 0) {
 		return (
-			<div className="flex h-full items-center justify-center text-muted-foreground text-sm">
+			<div className="flex h-full items-center justify-center font-medium text-muted-foreground text-sm">
 				No data to display
 			</div>
 		);
@@ -96,7 +89,8 @@ export function SizeTreemap({ nodes, onDrillDown }: SizeTreemapProps) {
 			<Treemap
 				data={data}
 				dataKey="size"
-				aspectRatio={4 / 3}
+				aspectRatio={16 / 9}
+				stroke="transparent"
 				isAnimationActive={false}
 				animationDuration={0}
 				content={<CustomTreemapCell onClick={handleClick} />}
@@ -131,32 +125,32 @@ function CustomTreemapCell({
 	onClick,
 }: CustomCellProps) {
 	const isClickable = kind === "directory" && nodeId !== -1;
-	const showLabel = width > 50 && height > 30;
-	const showSize = width > 60 && height > 44;
+	const showLabel = width > 60 && height > 35;
+	const showSize = width > 70 && height > 50;
+
+	// Add a small gap between cells
+	const gap = 2;
+	const adjustedX = x + gap / 2;
+	const adjustedY = y + gap / 2;
+	const adjustedWidth = Math.max(0, width - gap);
+	const adjustedHeight = Math.max(0, height - gap);
 
 	return (
 		<g>
 			<rect
-				x={x}
-				y={y}
-				width={width}
-				height={height}
+				x={adjustedX}
+				y={adjustedY}
+				width={adjustedWidth}
+				height={adjustedHeight}
 				fill={color}
-				stroke="oklch(0.145 0 0 / 0.4)"
-				strokeWidth={1}
-				rx={4}
-				ry={4}
+				rx={6}
+				ry={6}
 				style={{
 					cursor: isClickable ? "pointer" : "default",
-					transition: "opacity 0.15s",
+					transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+					filter: "brightness(0.9)",
 				}}
-				opacity={0.9}
-				onMouseEnter={(e) => {
-					e.currentTarget.setAttribute("opacity", "1");
-				}}
-				onMouseLeave={(e) => {
-					e.currentTarget.setAttribute("opacity", "0.9");
-				}}
+				className="hover:z-10 hover:shadow-lg hover:brightness-110"
 				onClick={() => {
 					if (isClickable) {
 						onClick({
@@ -170,31 +164,53 @@ function CustomTreemapCell({
 					}
 				}}
 			/>
+			{/* Folder Icon Overlay for directories */}
+			{kind === "directory" && width > 40 && height > 40 && (
+				<text
+					x={adjustedX + adjustedWidth - 14}
+					y={adjustedY + 14}
+					fill="white"
+					fillOpacity={0.3}
+					textAnchor="end"
+					dominantBaseline="hanging"
+					fontSize={12}
+					style={{ pointerEvents: "none" }}
+				>
+					ExampleIcon
+				</text>
+				// Note: SVG icon in SVG text is tricky, simpler to just use color coding or subtle indicators
+			)}
+
 			{showLabel && (
 				<>
 					<text
-						x={x + 8}
-						y={y + 16}
-						fill="oklch(0.98 0 0)"
+						x={adjustedX + 8}
+						y={adjustedY + 20}
+						fill="white"
 						stroke="none"
-						fontSize={11}
-						fontWeight={500}
-						style={{ pointerEvents: "none" }}
+						fontSize={12}
+						fontWeight={600}
+						style={{
+							pointerEvents: "none",
+							textShadow: "0 1px 2px rgba(0,0,0,0.3)",
+						}}
+						clipPath={`inset(0 0 0 0)`}
 					>
-						{truncateText(
-							`${kind === "directory" ? "" : ""}${name ?? ""}`,
-							width - 16,
-							11,
-						)}
+						{truncateText(`${name ?? ""}`, adjustedWidth - 16, 12)}
 					</text>
 					{showSize && (
 						<text
-							x={x + 8}
-							y={y + 30}
-							fill="oklch(0.98 0 0 / 0.7)"
+							x={adjustedX + 8}
+							y={adjustedY + 36}
+							fill="white"
+							fillOpacity={0.8}
 							stroke="none"
-							fontSize={10}
-							style={{ pointerEvents: "none" }}
+							fontSize={11}
+							fontFamily="monospace"
+							style={{
+								pointerEvents: "none",
+								textShadow: "0 1px 2px rgba(0,0,0,0.3)",
+							}}
 						>
 							{displaySize}
 						</text>

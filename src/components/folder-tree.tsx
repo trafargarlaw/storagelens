@@ -17,7 +17,7 @@ interface FolderTreeProps {
 
 export function FolderTree({ rootChildren, onNavigate }: FolderTreeProps) {
 	return (
-		<div className="space-y-px">
+		<div className="space-y-px overflow-y-auto">
 			{rootChildren.map((node) => (
 				<TreeRow key={node.id} node={node} depth={0} onNavigate={onNavigate} />
 			))}
@@ -96,7 +96,7 @@ function TreeRow({ node, depth, onNavigate }: TreeRowProps) {
 					<button
 						type="button"
 						onClick={handleClick}
-						className="group flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-accent/50"
+						className="group flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-white/5 hover:text-primary"
 						style={{ paddingLeft: `${depth * 20 + 8}px` }}
 					>
 						{/* Expand/collapse indicator */}
@@ -157,7 +157,7 @@ function TreeRow({ node, depth, onNavigate }: TreeRowProps) {
 						<span className="min-w-0 flex-1 truncate text-xs">{node.name}</span>
 
 						{/* Size */}
-						<span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+						<span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums group-hover:text-primary/70">
 							{formatBytes(node.size_bytes)}
 						</span>
 					</button>

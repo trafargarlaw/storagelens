@@ -112,7 +112,7 @@ function ResultsPage() {
 	// No result (error case)
 	if (!scanResult) {
 		return (
-			<div className="flex min-h-full flex-col items-center justify-center gap-4 px-6">
+			<div className="flex min-h-full flex-col items-center justify-center gap-4 bg-background px-6">
 				<p className="text-muted-foreground text-sm">
 					No scan results available
 				</p>
@@ -124,15 +124,20 @@ function ResultsPage() {
 	}
 
 	return (
-		<div className="flex h-full flex-col overflow-hidden">
+		<div className="flex h-full flex-col overflow-hidden bg-background">
 			{/* Header */}
-			<header className="flex shrink-0 items-center justify-between border-border border-b px-4 py-2.5">
-				<div className="flex items-center gap-3">
-					<Button variant="ghost" size="icon-sm" onClick={goHome}>
+			<header className="z-10 flex h-16 shrink-0 items-center justify-between border-white/5 border-b bg-card/30 px-6 backdrop-blur-md">
+				<div className="flex items-center gap-4 overflow-hidden">
+					<Button
+						variant="ghost"
+						size="icon-sm"
+						onClick={goHome}
+						className="rounded-full text-muted-foreground hover:bg-white/5 hover:text-primary"
+					>
 						<svg
 							aria-hidden="true"
-							width="14"
-							height="14"
+							width="20"
+							height="20"
 							viewBox="0 0 24 24"
 							fill="none"
 							stroke="currentColor"
@@ -143,20 +148,21 @@ function ResultsPage() {
 							<path d="m15 18-6-6 6-6" />
 						</svg>
 					</Button>
+
 					{/* Breadcrumb */}
-					<nav className="flex items-center gap-1 text-xs">
+					<nav className="mask-linear-fade flex items-center gap-1 overflow-hidden text-sm">
 						{breadcrumb.map((crumb, i) => (
-							<span key={crumb.id} className="flex items-center gap-1">
+							<span key={crumb.id} className="flex shrink-0 items-center gap-1">
 								{i > 0 && (
 									<svg
 										aria-hidden="true"
-										width="12"
-										height="12"
+										width="14"
+										height="14"
 										viewBox="0 0 24 24"
 										fill="none"
 										stroke="currentColor"
 										strokeWidth="2"
-										className="text-muted-foreground"
+										className="text-muted-foreground/40"
 									>
 										<path d="m9 18 6-6-6-6" />
 									</svg>
@@ -164,10 +170,10 @@ function ResultsPage() {
 								<button
 									type="button"
 									onClick={() => navigateBreadcrumb(i)}
-									className={`max-w-[160px] truncate rounded px-1 py-0.5 transition-colors hover:bg-accent ${
+									className={`max-w-[200px] truncate rounded-md px-2 py-1 transition-all ${
 										i === breadcrumb.length - 1
-											? "font-medium text-foreground"
-											: "text-muted-foreground hover:text-foreground"
+											? "bg-white/5 font-semibold text-foreground shadow-sm ring-1 ring-white/10"
+											: "text-muted-foreground hover:bg-white/5 hover:text-primary"
 									}`}
 								>
 									{crumb.name}
@@ -178,53 +184,56 @@ function ResultsPage() {
 				</div>
 
 				{/* Summary stats */}
-				<div className="flex items-center gap-4 text-muted-foreground text-xs">
-					<span>
-						<span className="font-medium text-foreground">
+				<div className="hidden items-center gap-6 rounded-full border border-white/5 bg-white/5 px-5 py-2 font-mono text-muted-foreground text-xs shadow-sm lg:flex">
+					<div className="flex gap-2">
+						<span className="font-bold text-primary">
 							{formatBytes(scanResult.total_size)}
-						</span>{" "}
-						total
-					</span>
-					<span>
-						<span className="font-medium text-foreground">
+						</span>
+						<span>total</span>
+					</div>
+					<div className="h-3 w-px bg-white/10" />
+					<div className="flex gap-2">
+						<span className="text-foreground">
 							{formatNumber(scanResult.file_count)}
-						</span>{" "}
-						files
-					</span>
-					<span>
-						<span className="font-medium text-foreground">
+						</span>
+						<span>files</span>
+					</div>
+					<div className="h-3 w-px bg-white/10" />
+					<div className="flex gap-2">
+						<span className="text-foreground">
 							{formatNumber(scanResult.dir_count)}
-						</span>{" "}
-						dirs
-					</span>
-					<span>{formatDuration(scanResult.elapsed_ms)}</span>
+						</span>
+						<span>dirs</span>
+					</div>
+					<div className="h-3 w-px bg-white/10" />
+					<div className="text-muted-foreground/70">
+						{formatDuration(scanResult.elapsed_ms)}
+					</div>
 				</div>
 			</header>
 
 			{/* Main content */}
-			<div className="flex min-h-0 flex-1 overflow-hidden">
+			<div className="flex flex-1 overflow-hidden">
 				{/* Treemap panel */}
-				<div className="min-h-0 flex-1 border-border border-r p-3">
-					<SizeTreemap nodes={currentChildren} onDrillDown={drillDown} />
+				<div className="min-w-0 flex-1 p-4">
+					<div className="group relative h-full w-full overflow-hidden rounded-2xl border border-white/5 bg-card/20 shadow-2xl backdrop-blur-sm">
+						<div className="pointer-events-none absolute inset-0" />
+						<SizeTreemap nodes={currentChildren} onDrillDown={drillDown} />
+					</div>
 				</div>
 
 				{/* Tree panel */}
-				<div className="flex min-h-0 w-[380px] shrink-0 flex-col">
-					<div className="flex items-center justify-between border-border border-b px-3 py-2">
-						<span className="font-medium text-muted-foreground text-xs">
+				<div className="z-20 flex w-96 shrink-0 flex-col overflow-hidden border-white/5 border-l bg-card/10 shadow-xl backdrop-blur-md">
+					<div className="flex items-center justify-between border-white/5 border-b bg-white/[0.02] px-5 py-4">
+						<span className="font-medium text-foreground text-sm tracking-wide">
 							Contents
 						</span>
-						<span className="text-muted-foreground text-xs tabular-nums">
+						<span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 font-medium font-mono text-primary text-xs">
 							{currentChildren.length} items
 						</span>
 					</div>
-					<ScrollArea className="min-h-0 flex-1">
-						<div className="py-1">
-							<FolderTree
-								rootChildren={currentChildren}
-								onNavigate={drillDown}
-							/>
-						</div>
+					<ScrollArea className="flex-1">
+						<FolderTree rootChildren={currentChildren} onNavigate={drillDown} />
 					</ScrollArea>
 				</div>
 			</div>
