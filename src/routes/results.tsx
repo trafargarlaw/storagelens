@@ -44,7 +44,6 @@ function ResultsPage() {
 				async (event) => {
 					setScanning(false);
 					setScanResult(event.payload);
-					// Load root children inline to avoid stale closure
 					try {
 						const children = await invoke<ScanNode[]>("get_children", {
 							nodeId: event.payload.root_id,
@@ -124,20 +123,20 @@ function ResultsPage() {
 	}
 
 	return (
-		<div className="flex h-full flex-col overflow-hidden bg-background">
+		<div className="page-enter flex h-full flex-col overflow-hidden bg-background">
 			{/* Header */}
-			<header className="z-10 flex h-16 shrink-0 items-center justify-between border-white/5 border-b bg-card/30 px-6 backdrop-blur-md">
-				<div className="flex items-center gap-4 overflow-hidden">
+			<header className="z-10 flex h-12 shrink-0 items-center justify-between border-border/50 border-b bg-card/30 px-4">
+				<div className="flex items-center gap-2 overflow-hidden">
 					<Button
 						variant="ghost"
 						size="icon-sm"
 						onClick={goHome}
-						className="rounded-full text-muted-foreground hover:bg-white/5 hover:text-primary"
+						className="size-7 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
 					>
 						<svg
 							aria-hidden="true"
-							width="20"
-							height="20"
+							width="16"
+							height="16"
 							viewBox="0 0 24 24"
 							fill="none"
 							stroke="currentColor"
@@ -150,19 +149,22 @@ function ResultsPage() {
 					</Button>
 
 					{/* Breadcrumb */}
-					<nav className="mask-linear-fade flex items-center gap-1 overflow-hidden text-sm">
+					<nav className="flex items-center gap-0.5 overflow-hidden text-sm">
 						{breadcrumb.map((crumb, i) => (
-							<span key={crumb.id} className="flex shrink-0 items-center gap-1">
+							<span
+								key={crumb.id}
+								className="flex shrink-0 items-center gap-0.5"
+							>
 								{i > 0 && (
 									<svg
 										aria-hidden="true"
-										width="14"
-										height="14"
+										width="12"
+										height="12"
 										viewBox="0 0 24 24"
 										fill="none"
 										stroke="currentColor"
 										strokeWidth="2"
-										className="text-muted-foreground/40"
+										className="text-muted-foreground/30"
 									>
 										<path d="m9 18 6-6-6-6" />
 									</svg>
@@ -170,10 +172,10 @@ function ResultsPage() {
 								<button
 									type="button"
 									onClick={() => navigateBreadcrumb(i)}
-									className={`max-w-[200px] truncate rounded-md px-2 py-1 transition-all ${
+									className={`max-w-[180px] truncate rounded-md px-1.5 py-0.5 text-xs transition-colors ${
 										i === breadcrumb.length - 1
-											? "bg-white/5 font-semibold text-foreground shadow-sm ring-1 ring-white/10"
-											: "text-muted-foreground hover:bg-white/5 hover:text-primary"
+											? "font-medium text-foreground"
+											: "text-muted-foreground hover:text-foreground"
 									}`}
 								>
 									{crumb.name}
@@ -184,52 +186,38 @@ function ResultsPage() {
 				</div>
 
 				{/* Summary stats */}
-				<div className="hidden items-center gap-6 rounded-full border border-white/5 bg-white/5 px-5 py-2 font-mono text-muted-foreground text-xs shadow-sm lg:flex">
-					<div className="flex gap-2">
-						<span className="font-bold text-primary">
-							{formatBytes(scanResult.total_size)}
-						</span>
-						<span>total</span>
-					</div>
-					<div className="h-3 w-px bg-white/10" />
-					<div className="flex gap-2">
-						<span className="text-foreground">
-							{formatNumber(scanResult.file_count)}
-						</span>
-						<span>files</span>
-					</div>
-					<div className="h-3 w-px bg-white/10" />
-					<div className="flex gap-2">
-						<span className="text-foreground">
-							{formatNumber(scanResult.dir_count)}
-						</span>
-						<span>dirs</span>
-					</div>
-					<div className="h-3 w-px bg-white/10" />
-					<div className="text-muted-foreground/70">
+				<div className="hidden items-center gap-4 font-mono text-[11px] text-muted-foreground tabular-nums lg:flex">
+					<span className="font-medium text-primary">
+						{formatBytes(scanResult.total_size)}
+					</span>
+					<span className="text-border">|</span>
+					<span>{formatNumber(scanResult.file_count)} files</span>
+					<span className="text-border">|</span>
+					<span>{formatNumber(scanResult.dir_count)} dirs</span>
+					<span className="text-border">|</span>
+					<span className="text-muted-foreground/60">
 						{formatDuration(scanResult.elapsed_ms)}
-					</div>
+					</span>
 				</div>
 			</header>
 
 			{/* Main content */}
 			<div className="flex flex-1 overflow-hidden">
 				{/* Treemap panel */}
-				<div className="min-w-0 flex-1 p-4">
-					<div className="group relative h-full w-full overflow-hidden rounded-2xl border border-white/5 bg-card/20 shadow-2xl backdrop-blur-sm">
-						<div className="pointer-events-none absolute inset-0" />
+				<div className="min-w-0 flex-1 p-3">
+					<div className="h-full w-full overflow-hidden rounded-xl border border-border/40 bg-card/20">
 						<SizeTreemap nodes={currentChildren} onDrillDown={drillDown} />
 					</div>
 				</div>
 
 				{/* Tree panel */}
-				<div className="z-20 flex w-96 shrink-0 flex-col overflow-hidden border-white/5 border-l bg-card/10 shadow-xl backdrop-blur-md">
-					<div className="flex items-center justify-between border-white/5 border-b bg-white/[0.02] px-5 py-4">
-						<span className="font-medium text-foreground text-sm tracking-wide">
+				<div className="z-20 flex w-80 shrink-0 flex-col overflow-hidden border-border/50 border-l bg-card/20">
+					<div className="flex items-center justify-between border-border/40 border-b px-4 py-3">
+						<span className="font-medium text-foreground text-xs tracking-wide">
 							Contents
 						</span>
-						<span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 font-medium font-mono text-primary text-xs">
-							{currentChildren.length} items
+						<span className="rounded-md bg-muted/50 px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+							{currentChildren.length}
 						</span>
 					</div>
 					<ScrollArea className="flex-1">

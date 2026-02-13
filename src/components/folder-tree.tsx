@@ -17,7 +17,7 @@ interface FolderTreeProps {
 
 export function FolderTree({ rootChildren, onNavigate }: FolderTreeProps) {
 	return (
-		<div className="space-y-px overflow-y-auto">
+		<div className="py-1">
 			{rootChildren.map((node) => (
 				<TreeRow key={node.id} node={node} depth={0} onNavigate={onNavigate} />
 			))}
@@ -96,26 +96,26 @@ function TreeRow({ node, depth, onNavigate }: TreeRowProps) {
 					<button
 						type="button"
 						onClick={handleClick}
-						className="group flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-white/5 hover:text-primary"
-						style={{ paddingLeft: `${depth * 20 + 8}px` }}
+						className="group flex w-full cursor-pointer items-center gap-2 px-3 py-[5px] text-left transition-colors duration-150 hover:bg-muted/40"
+						style={{ paddingLeft: `${depth * 16 + 12}px` }}
 					>
 						{/* Expand/collapse indicator */}
-						<span className="flex size-4 shrink-0 items-center justify-center">
+						<span className="flex size-3.5 shrink-0 items-center justify-center">
 							{isDir ? (
 								loading ? (
-									<span className="size-3 animate-spin rounded-full border border-muted-foreground/30 border-t-muted-foreground" />
+									<span className="size-2.5 animate-spin rounded-full border border-muted-foreground/30 border-t-muted-foreground" />
 								) : (
 									<svg
 										aria-hidden="true"
-										width="12"
-										height="12"
+										width="10"
+										height="10"
 										viewBox="0 0 24 24"
 										fill="none"
 										stroke="currentColor"
-										strokeWidth="2"
+										strokeWidth="2.5"
 										strokeLinecap="round"
 										strokeLinejoin="round"
-										className={`text-muted-foreground transition-transform ${expanded ? "rotate-90" : ""}`}
+										className={`text-muted-foreground/60 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
 									>
 										<path d="m9 18 6-6-6-6" />
 									</svg>
@@ -127,26 +127,26 @@ function TreeRow({ node, depth, onNavigate }: TreeRowProps) {
 						{isDir ? (
 							<svg
 								aria-hidden="true"
-								width="14"
-								height="14"
+								width="13"
+								height="13"
 								viewBox="0 0 24 24"
 								fill="currentColor"
-								className="shrink-0 text-primary/80"
+								className="shrink-0 text-primary/60"
 							>
 								<path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
 							</svg>
 						) : (
 							<svg
 								aria-hidden="true"
-								width="14"
-								height="14"
+								width="13"
+								height="13"
 								viewBox="0 0 24 24"
 								fill="none"
 								stroke="currentColor"
 								strokeWidth="1.5"
 								strokeLinecap="round"
 								strokeLinejoin="round"
-								className="shrink-0 text-muted-foreground"
+								className="shrink-0 text-muted-foreground/50"
 							>
 								<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
 								<path d="M14 2v4a2 2 0 0 0 2 2h4" />
@@ -154,10 +154,12 @@ function TreeRow({ node, depth, onNavigate }: TreeRowProps) {
 						)}
 
 						{/* Name */}
-						<span className="min-w-0 flex-1 truncate text-xs">{node.name}</span>
+						<span className="min-w-0 flex-1 truncate text-[12px]">
+							{node.name}
+						</span>
 
 						{/* Size */}
-						<span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums group-hover:text-primary/70">
+						<span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
 							{formatBytes(node.size_bytes)}
 						</span>
 					</button>

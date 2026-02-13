@@ -8,7 +8,6 @@ interface SizeTreemapProps {
 	onDrillDown: (node: ScanNode) => void;
 }
 
-// Updated palette using CSS variables for consistency
 const COLORS = [
 	"var(--chart-1)",
 	"var(--chart-2)",
@@ -35,15 +34,14 @@ export function SizeTreemap({ nodes, onDrillDown }: SizeTreemapProps) {
 	const data = useMemo(() => {
 		if (nodes.length === 0) return [];
 
-		// Show top items, group the rest into "Other"
-		const MAX_ITEMS = 30; // Increased slightly
+		const MAX_ITEMS = 30;
 		const sorted = [...nodes].sort((a, b) => b.size_bytes - a.size_bytes);
 		const top = sorted.slice(0, MAX_ITEMS);
 		const rest = sorted.slice(MAX_ITEMS);
 
 		const items: TreemapEntry[] = top.map((node, i) => ({
 			name: node.name,
-			size: Math.max(node.size_bytes, 1), // Treemap needs > 0
+			size: Math.max(node.size_bytes, 1),
 			displaySize: formatBytes(node.size_bytes),
 			nodeId: node.id,
 			kind: node.kind,
@@ -58,7 +56,7 @@ export function SizeTreemap({ nodes, onDrillDown }: SizeTreemapProps) {
 				displaySize: formatBytes(otherSize),
 				nodeId: -1,
 				kind: "other",
-				color: "var(--muted)", // Use muted color for "others"
+				color: "var(--muted)",
 			});
 		}
 
@@ -78,7 +76,7 @@ export function SizeTreemap({ nodes, onDrillDown }: SizeTreemapProps) {
 
 	if (data.length === 0) {
 		return (
-			<div className="flex h-full items-center justify-center font-medium text-muted-foreground text-sm">
+			<div className="flex h-full items-center justify-center text-muted-foreground text-sm">
 				No data to display
 			</div>
 		);
@@ -128,7 +126,6 @@ function CustomTreemapCell({
 	const showLabel = width > 60 && height > 35;
 	const showSize = width > 70 && height > 50;
 
-	// Add a small gap between cells
 	const gap = 2;
 	const adjustedX = x + gap / 2;
 	const adjustedY = y + gap / 2;
@@ -143,14 +140,22 @@ function CustomTreemapCell({
 				width={adjustedWidth}
 				height={adjustedHeight}
 				fill={color}
-				rx={6}
-				ry={6}
+				rx={5}
+				ry={5}
 				style={{
 					cursor: isClickable ? "pointer" : "default",
-					transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-					filter: "brightness(0.9)",
+					transition: "filter 0.15s ease",
+					filter: "brightness(0.85) saturate(0.9)",
 				}}
-				className="hover:z-10 hover:shadow-lg hover:brightness-110"
+				className="hover:brightness-110"
+				onMouseEnter={(e) => {
+					(e.target as SVGRectElement).style.filter =
+						"brightness(1.0) saturate(1.0)";
+				}}
+				onMouseLeave={(e) => {
+					(e.target as SVGRectElement).style.filter =
+						"brightness(0.85) saturate(0.9)";
+				}}
 				onClick={() => {
 					if (isClickable) {
 						onClick({
@@ -164,52 +169,36 @@ function CustomTreemapCell({
 					}
 				}}
 			/>
-			{/* Folder Icon Overlay for directories */}
-			{kind === "directory" && width > 40 && height > 40 && (
-				<text
-					x={adjustedX + adjustedWidth - 14}
-					y={adjustedY + 14}
-					fill="white"
-					fillOpacity={0.3}
-					textAnchor="end"
-					dominantBaseline="hanging"
-					fontSize={12}
-					style={{ pointerEvents: "none" }}
-				>
-					ExampleIcon
-				</text>
-				// Note: SVG icon in SVG text is tricky, simpler to just use color coding or subtle indicators
-			)}
 
 			{showLabel && (
 				<>
 					<text
 						x={adjustedX + 8}
-						y={adjustedY + 20}
+						y={adjustedY + 18}
 						fill="white"
 						stroke="none"
-						fontSize={12}
-						fontWeight={600}
+						fontSize={11}
+						fontWeight={500}
+						fontFamily="'Outfit', sans-serif"
 						style={{
 							pointerEvents: "none",
-							textShadow: "0 1px 2px rgba(0,0,0,0.3)",
+							textShadow: "0 1px 3px rgba(0,0,0,0.5)",
 						}}
-						clipPath={`inset(0 0 0 0)`}
 					>
-						{truncateText(`${name ?? ""}`, adjustedWidth - 16, 12)}
+						{truncateText(`${name ?? ""}`, adjustedWidth - 16, 11)}
 					</text>
 					{showSize && (
 						<text
 							x={adjustedX + 8}
-							y={adjustedY + 36}
+							y={adjustedY + 33}
 							fill="white"
-							fillOpacity={0.8}
+							fillOpacity={0.7}
 							stroke="none"
-							fontSize={11}
-							fontFamily="monospace"
+							fontSize={10}
+							fontFamily="'JetBrains Mono', monospace"
 							style={{
 								pointerEvents: "none",
-								textShadow: "0 1px 2px rgba(0,0,0,0.3)",
+								textShadow: "0 1px 3px rgba(0,0,0,0.5)",
 							}}
 						>
 							{displaySize}
