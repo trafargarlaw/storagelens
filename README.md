@@ -12,6 +12,19 @@ pnpm tauri dev
 - macOS: `.github/workflows/release-macos.yml`
 - Windows: `.github/workflows/release-windows.yml`
 
+Both workflows now upload installers to the matching GitHub Release when the push is a tag (`v*`).
+
+Create a release by pushing a version tag:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Download page:
+
+- `https://github.com/<OWNER>/<REPO>/releases/tag/v0.1.0`
+
 Windows bundle targets are configured in:
 
 - `src-tauri/tauri.windows.conf.json`

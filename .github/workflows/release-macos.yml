@@ -11,7 +11,7 @@ jobs:
     runs-on: macos-14
     environment: prod
     permissions:
-      contents: read
+      contents: write
 
     steps:
       - name: Checkout
@@ -59,3 +59,15 @@ jobs:
         with:
           name: macos-bundles
           path: src-tauri/target/release/bundle/**
+
+      - name: Publish macOS assets to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            src-tauri/target/release/bundle/dmg/*
+            src-tauri/target/release/bundle/macos/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
