@@ -1,5 +1,6 @@
 mod commands;
 mod models;
+mod scanner;
 mod state;
 
 use state::AppState;

@@ -1,5 +1,6 @@
-use scanner::{NodeKind, ScanNode, ScanTree};
 use serde::Serialize;
+
+use crate::scanner::{NodeKind, ScanNode, ScanTree};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct VolumeInfo {

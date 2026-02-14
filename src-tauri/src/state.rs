@@ -1,6 +1,7 @@
-use scanner::ScanTree;
 use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
+
+use crate::scanner::ScanTree;
 
 pub struct AppState {
     pub scan_tree: Mutex<Option<ScanTree>>,

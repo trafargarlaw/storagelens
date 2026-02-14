@@ -3,11 +3,11 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::thread;
 
-use scanner::{scan_tree, validate_root, ScanConfig};
 use sysinfo::Disks;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::models::{ScanNodeDto, ScanProgressDto, ScanResultDto, VolumeInfo};
+use crate::scanner::{scan_tree, validate_root, ScanConfig, ScanProgress};
 use crate::state::AppState;
 
 #[tauri::command]
@@ -52,7 +52,7 @@ pub fn start_scan(app: AppHandle, path: String) -> Result<(), String> {
     let app_handle = app.clone();
 
     thread::spawn(move || {
-        let (progress_tx, progress_rx) = mpsc::channel::<scanner::ScanProgress>();
+        let (progress_tx, progress_rx) = mpsc::channel::<ScanProgress>();
 
         let scan_app = app_handle.clone();
         let progress_handle = thread::spawn(move || {
