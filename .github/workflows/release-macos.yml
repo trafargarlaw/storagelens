@@ -33,9 +33,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Configure optional App Store Connect key file
-        if: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
+      - name: Configure App Store Connect key file
+        shell: bash
         run: |
+          if [ -z "${{ secrets.APPLE_API_KEY_CONTENT }}" ]; then
+            echo "APPLE_API_KEY_CONTENT secret is required for notarization"
+            exit 1
+          fi
           KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
           printf '%s' "${{ secrets.APPLE_API_KEY_CONTENT }}" > "$KEY_PATH"
           echo "APPLE_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
@@ -45,9 +49,6 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: pnpm tauri build

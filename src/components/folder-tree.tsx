@@ -183,7 +183,7 @@ function TreeRow({ node, depth, onNavigate }: TreeRowProps) {
 							<polyline points="15 3 21 3 21 9" />
 							<line x1="10" x2="21" y1="14" y2="3" />
 						</svg>
-						Reveal in Finder
+						Reveal in File Manager
 					</ContextMenuItem>
 					{isDir && node.child_count > 0 && (
 						<ContextMenuItem onClick={() => onNavigate(node)}>
