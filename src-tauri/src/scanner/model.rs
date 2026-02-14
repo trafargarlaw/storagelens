@@ -87,6 +87,7 @@ pub struct ScanTree {
     pub root_path: PathBuf,
     pub root_id: usize,
     pub nodes: Vec<ScanNode>,
+    #[allow(dead_code)]
     pub scanned_directories: u64,
     pub elapsed: Duration,
 }
