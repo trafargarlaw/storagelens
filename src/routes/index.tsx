@@ -59,7 +59,7 @@ function ScanSetupPage() {
 							<AppLogo aria-hidden="true" className="size-12" />
 						</div>
 						<h1 className="font-semibold text-2xl tracking-tight">
-							Disk Scanner
+							storagelens
 						</h1>
 						<p className="text-muted-foreground text-sm">
 							Select a volume or folder to analyze

@@ -1,4 +1,4 @@
-# Disk Scanner (Tauri + React)
+# storagelens (Tauri + React)
 
 ## Development
 
@@ -9,22 +9,22 @@ pnpm tauri dev
 
 ## Release Workflows
 
-- macOS: `/Users/mac/Desktop/Code/disk-scanner/.github/workflows/release-macos.yml`
-- Windows: `/Users/mac/Desktop/Code/disk-scanner/.github/workflows/release-windows.yml`
+- macOS: `.github/workflows/release-macos.yml`
+- Windows: `.github/workflows/release-windows.yml`
 
 Windows bundle targets are configured in:
 
-- `/Users/mac/Desktop/Code/disk-scanner/src-tauri/tauri.windows.conf.json`
+- `src-tauri/tauri.windows.conf.json`
 
 ## macOS Signing and Notarization
 
 Non-secret bundle settings live in:
 
-- `/Users/mac/Desktop/Code/disk-scanner/src-tauri/tauri.conf.json`
+- `src-tauri/tauri.conf.json`
 
 Release workflow:
 
-- `/Users/mac/Desktop/Code/disk-scanner/.github/workflows/release-macos.yml`
+- `.github/workflows/release-macos.yml`
 
 It builds a signed/notarized macOS bundle with `pnpm tauri build`.
 
