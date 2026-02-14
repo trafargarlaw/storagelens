@@ -35,10 +35,22 @@ export interface ScanProgress {
 }
 
 export interface ScanResult {
+	scan_id: string;
 	root_path: string;
 	root_id: number;
 	total_size: number;
 	file_count: number;
 	dir_count: number;
 	elapsed_ms: number;
+}
+
+export interface ScanHistoryItem {
+	scan_id: string;
+	root_path: string;
+	root_id: number;
+	total_size: number;
+	file_count: number;
+	dir_count: number;
+	elapsed_ms: number;
+	created_at_ms: number;
 }

@@ -2,13 +2,16 @@ use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::thread;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use sysinfo::Disks;
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::models::{ScanNodeDto, ScanProgressDto, ScanResultDto, VolumeInfo};
-use crate::scanner::{scan_tree, validate_root, ScanConfig, ScanProgress};
-use crate::state::AppState;
+use crate::models::{
+    ScanHistoryItemDto, ScanNodeDto, ScanProgressDto, ScanResultDto, VolumeInfo,
+};
+use crate::scanner::{scan_tree, validate_root, ScanConfig, ScanProgress, ScanTree};
+use crate::state::{AppState, CachedScan};
 
 #[tauri::command]
 pub fn list_volumes() -> Vec<VolumeInfo> {
@@ -43,11 +46,6 @@ pub fn start_scan(app: AppHandle, path: String) -> Result<(), String> {
     validate_root(&root).map_err(|e| e.to_string())?;
 
     state.scanning.store(true, Ordering::SeqCst);
-    // Clear previous scan
-    {
-        let mut tree = state.scan_tree.lock().unwrap();
-        *tree = None;
-    }
 
     let app_handle = app.clone();
 
@@ -84,19 +82,30 @@ pub fn start_scan(app: AppHandle, path: String) -> Result<(), String> {
         let _ = progress_handle.join();
 
         let scan_state = app_handle.state::<AppState>();
+        scan_state.scanning.store(false, Ordering::SeqCst);
 
         match result {
             Ok(tree) => {
-                let result_dto = ScanResultDto::from_scan_tree(&tree);
-                {
-                    let mut stored = scan_state.scan_tree.lock().unwrap();
-                    *stored = Some(tree);
+                let scan_id = scan_state.next_scan_id();
+                let created_at_ms = unix_now_ms();
+                let result_dto = {
+                    let mut history = scan_state.scan_history.lock().unwrap();
+                    history.insert_scan(CachedScan {
+                        id: scan_id.clone(),
+                        created_at_ms,
+                        tree,
+                    });
+                    history
+                        .active_scan()
+                        .map(|scan| ScanResultDto::from_scan_tree(scan.id.clone(), &scan.tree))
+                };
+                if let Some(payload) = result_dto {
+                    let _ = app_handle.emit("scan-complete", payload);
+                } else {
+                    let _ = app_handle.emit("scan-error", "Failed to cache scan result");
                 }
-                scan_state.scanning.store(false, Ordering::SeqCst);
-                let _ = app_handle.emit("scan-complete", result_dto);
             }
             Err(e) => {
-                scan_state.scanning.store(false, Ordering::SeqCst);
                 let _ = app_handle.emit("scan-error", e.to_string());
             }
         }
@@ -106,33 +115,76 @@ pub fn start_scan(app: AppHandle, path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn is_scanning(app: AppHandle) -> bool {
+    let state = app.state::<AppState>();
+    state.scanning.load(Ordering::SeqCst)
+}
+
+#[tauri::command]
+pub fn list_scan_history(app: AppHandle) -> Vec<ScanHistoryItemDto> {
+    let state = app.state::<AppState>();
+    let history = state.scan_history.lock().unwrap();
+    history
+        .scans
+        .iter()
+        .map(|scan| {
+            ScanHistoryItemDto::from_scan_tree(scan.id.clone(), scan.created_at_ms, &scan.tree)
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub fn activate_scan(app: AppHandle, id: String) -> Result<ScanResultDto, String> {
+    let state = app.state::<AppState>();
+    let mut history = state.scan_history.lock().unwrap();
+    let found = history.scans.iter().any(|scan| scan.id == id);
+    if !found {
+        return Err("Scan not found".into());
+    }
+    history.active_scan_id = Some(id);
+    let active = history.active_scan().ok_or("No scan data available")?;
+    Ok(ScanResultDto::from_scan_tree(active.id.clone(), &active.tree))
+}
+
+#[tauri::command]
+pub fn delete_scan(app: AppHandle, id: String) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let mut history = state.scan_history.lock().unwrap();
+    let before_len = history.scans.len();
+    history.scans.retain(|scan| scan.id != id);
+    if history.scans.len() == before_len {
+        return Err("Scan not found".into());
+    }
+    if history.active_scan_id.as_deref() == Some(id.as_str()) {
+        history.active_scan_id = history.scans.front().map(|scan| scan.id.clone());
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub fn get_children(app: AppHandle, node_id: usize) -> Result<Vec<ScanNodeDto>, String> {
     let state = app.state::<AppState>();
-    let tree_guard = state.scan_tree.lock().unwrap();
-    let tree = tree_guard.as_ref().ok_or("No scan data available")?;
-
-    let node = tree.nodes.get(node_id).ok_or("Invalid node ID")?;
-    let children: Vec<ScanNodeDto> = node
-        .children
-        .iter()
-        .filter_map(|&child_id| tree.nodes.get(child_id))
-        .map(ScanNodeDto::from_scan_node)
-        .collect();
-
-    Ok(children)
+    with_active_tree(&state, |tree| {
+        let node = tree.nodes.get(node_id).ok_or("Invalid node ID")?;
+        let children: Vec<ScanNodeDto> = node
+            .children
+            .iter()
+            .filter_map(|&child_id| tree.nodes.get(child_id))
+            .map(ScanNodeDto::from_scan_node)
+            .collect();
+        Ok(children)
+    })
 }
 
 #[tauri::command]
 pub fn get_node_path(app: AppHandle, node_id: usize) -> Result<String, String> {
     let state = app.state::<AppState>();
-    let tree_guard = state.scan_tree.lock().unwrap();
-    let tree = tree_guard.as_ref().ok_or("No scan data available")?;
-
-    if node_id >= tree.nodes.len() {
-        return Err("Invalid node ID".into());
-    }
-
-    Ok(tree.absolute_path(node_id).to_string_lossy().into_owned())
+    with_active_tree(&state, |tree| {
+        if node_id >= tree.nodes.len() {
+            return Err("Invalid node ID".into());
+        }
+        Ok(tree.absolute_path(node_id).to_string_lossy().into_owned())
+    })
 }
 
 #[tauri::command]
@@ -173,13 +225,29 @@ pub fn reveal_in_finder(path: String) -> Result<(), String> {
 #[tauri::command]
 pub fn get_scan_result(app: AppHandle) -> Result<ScanResultDto, String> {
     let state = app.state::<AppState>();
-    let tree_guard = state.scan_tree.lock().unwrap();
-    let tree = tree_guard.as_ref().ok_or("No scan data available")?;
-    Ok(ScanResultDto::from_scan_tree(tree))
+    let history = state.scan_history.lock().unwrap();
+    let active = history.active_scan().ok_or("No scan data available")?;
+    Ok(ScanResultDto::from_scan_tree(active.id.clone(), &active.tree))
 }
 
 fn num_cpus() -> usize {
     thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4)
+}
+
+fn unix_now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+fn with_active_tree<T>(
+    state: &AppState,
+    map: impl FnOnce(&ScanTree) -> Result<T, String>,
+) -> Result<T, String> {
+    let history = state.scan_history.lock().unwrap();
+    let active = history.active_scan().ok_or("No scan data available")?;
+    map(&active.tree)
 }

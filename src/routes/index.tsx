@@ -5,29 +5,33 @@ import {
 } from "@tanstack/react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
 import { AppLogo } from "@/components/app-logo";
 import { CircularProgress } from "@/components/circular-progress";
-import { formatBytes } from "@/lib/format";
-import type { Volume } from "@/types";
+import { formatBytes, formatDuration } from "@/lib/format";
+import type { ScanHistoryItem, Volume } from "@/types";
 
 export const Route = createFileRoute("/")({
 	component: ScanSetupPage,
 	loader: async () => {
-		const volumes = await invoke<Volume[]>("list_volumes");
+		const [volumes, history] = await Promise.all([
+			invoke<Volume[]>("list_volumes"),
+			invoke<ScanHistoryItem[]>("list_scan_history"),
+		]);
 		const filtered = volumes
 			.filter((vol) => vol.total_bytes > 0)
 			.filter((vol) => !isSystemPseudoVolume(vol.mount_point));
 		const deduped = dedupeVolumes(filtered);
 		deduped.sort((a, b) => b.total_bytes - a.total_bytes);
-		return { volumes: deduped };
+		return { volumes: deduped, history };
 	},
 });
 
 function ScanSetupPage() {
-	const { volumes } = useLoaderData({ from: "/" });
+	const { volumes, history: initialHistory } = useLoaderData({ from: "/" });
+	const [history, setHistory] = useState(initialHistory);
 	const navigate = useNavigate();
 
 	const startScan = useCallback(
@@ -48,6 +52,27 @@ function ScanSetupPage() {
 			void startScan(selected);
 		}
 	}, [startScan]);
+
+	const openCachedScan = useCallback(
+		async (scanId: string) => {
+			try {
+				await invoke("activate_scan", { id: scanId });
+				navigate({ to: "/results" });
+			} catch (err) {
+				toast.error(`Failed to open cached result: ${err}`);
+			}
+		},
+		[navigate],
+	);
+
+	const deleteCachedScan = useCallback(async (scanId: string) => {
+		try {
+			await invoke("delete_scan", { id: scanId });
+			setHistory((prev) => prev.filter((item) => item.scan_id !== scanId));
+		} catch (err) {
+			toast.error(`Failed to delete cached result: ${err}`);
+		}
+	}, []);
 
 	return (
 		<div className="flex h-full flex-col bg-background">
@@ -117,6 +142,69 @@ function ScanSetupPage() {
 							</span>
 						</button>
 					</div>
+
+					{history.length > 0 && (
+						<div className="space-y-3">
+							<div className="flex items-center justify-between">
+								<h2 className="font-medium text-sm tracking-wide">
+									Recent Results
+								</h2>
+								<span className="rounded-md bg-muted/60 px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+									{history.length}
+								</span>
+							</div>
+							<div className="space-y-2">
+								{history.slice(0, 6).map((item) => (
+									<div
+										key={item.scan_id}
+										className="flex items-center gap-2 rounded-lg border border-border/50 bg-card/40 p-2"
+									>
+										<button
+											type="button"
+											onClick={() => void openCachedScan(item.scan_id)}
+											className="min-w-0 flex-1 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/50"
+										>
+											<p
+												className="truncate font-medium text-[12px]"
+												title={item.root_path}
+											>
+												{item.root_path}
+											</p>
+											<p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
+												{formatBytes(item.total_size)} ·{" "}
+												{formatDuration(item.elapsed_ms)} ·{" "}
+												{formatScanTimestamp(item.created_at_ms)}
+											</p>
+										</button>
+										<button
+											type="button"
+											onClick={() => void deleteCachedScan(item.scan_id)}
+											className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+											aria-label="Delete cached result"
+										>
+											<svg
+												aria-hidden="true"
+												width="14"
+												height="14"
+												viewBox="0 0 24 24"
+												fill="none"
+												stroke="currentColor"
+												strokeWidth="1.8"
+												strokeLinecap="round"
+												strokeLinejoin="round"
+											>
+												<path d="M3 6h18" />
+												<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+												<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+												<path d="M10 11v6" />
+												<path d="M14 11v6" />
+											</svg>
+										</button>
+									</div>
+								))}
+							</div>
+						</div>
+					)}
 				</div>
 			</div>
 		</div>
@@ -221,4 +309,8 @@ function dedupeVolumes(volumes: Volume[]): Volume[] {
 
 function isSystemPseudoVolume(mountPoint: string): boolean {
 	return mountPoint.startsWith("/System/Volumes/");
+}
+
+function formatScanTimestamp(timestampMs: number): string {
+	return new Date(timestampMs).toLocaleString();
 }

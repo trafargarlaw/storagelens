@@ -9,7 +9,7 @@ import { SizeTreemap } from "@/components/size-treemap";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatBytes, formatDuration, formatNumber } from "@/lib/format";
-import type { ScanNode, ScanProgress, ScanResult } from "@/types";
+import type { ScanHistoryItem, ScanNode, ScanProgress, ScanResult } from "@/types";
 
 export const Route = createFileRoute("/results")({
 	component: ResultsPage,
@@ -25,17 +25,47 @@ function ResultsPage() {
 	const [scanning, setScanning] = useState(true);
 	const [progress, setProgress] = useState<ScanProgress | null>(null);
 	const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+	const [history, setHistory] = useState<ScanHistoryItem[]>([]);
+	const [activeScanId, setActiveScanId] = useState<string | null>(null);
 	const [currentChildren, setCurrentChildren] = useState<ScanNode[]>([]);
 	const [breadcrumb, setBreadcrumb] = useState<BreadcrumbItem[]>([]);
 	const unlistenRefs = useRef<Array<() => void>>([]);
 
-	// Listen for scan events
+	const clearResultView = useCallback(() => {
+		setScanResult(null);
+		setActiveScanId(null);
+		setCurrentChildren([]);
+		setBreadcrumb([]);
+	}, []);
+
+	const refreshHistory = useCallback(async () => {
+		const entries = await invoke<ScanHistoryItem[]>("list_scan_history");
+		setHistory(entries);
+		return entries;
+	}, []);
+
+	const loadResultView = useCallback(
+		async (result: ScanResult) => {
+			setScanResult(result);
+			setActiveScanId(result.scan_id);
+			const children = await invoke<ScanNode[]>("get_children", {
+				nodeId: result.root_id,
+			});
+			setCurrentChildren(children);
+			setBreadcrumb([{ id: result.root_id, name: result.root_path }]);
+		},
+		[],
+	);
+
 	useEffect(() => {
+		let mounted = true;
+
 		const setup = async () => {
 			const unProgress = await listen<ScanProgress>(
 				"scan-progress",
 				(event) => {
 					setProgress(event.payload);
+					setScanning(true);
 				},
 			);
 
@@ -43,15 +73,9 @@ function ResultsPage() {
 				"scan-complete",
 				async (event) => {
 					setScanning(false);
-					setScanResult(event.payload);
 					try {
-						const children = await invoke<ScanNode[]>("get_children", {
-							nodeId: event.payload.root_id,
-						});
-						setCurrentChildren(children);
-						setBreadcrumb([
-							{ id: event.payload.root_id, name: event.payload.root_path },
-						]);
+						await loadResultView(event.payload);
+						await refreshHistory();
 					} catch (err) {
 						toast.error(`Failed to load: ${err}`);
 					}
@@ -64,16 +88,78 @@ function ResultsPage() {
 			});
 
 			unlistenRefs.current = [unProgress, unComplete, unError];
+
+			let keepScanning = false;
+			try {
+				await refreshHistory();
+				const currentlyScanning = await invoke<boolean>("is_scanning");
+				if (!mounted) return;
+
+				if (currentlyScanning) {
+					setScanning(true);
+					keepScanning = true;
+					return;
+				}
+
+				try {
+					const result = await invoke<ScanResult>("get_scan_result");
+					if (!mounted) return;
+					await loadResultView(result);
+				} catch {
+					if (!mounted) return;
+					clearResultView();
+				}
+			} catch (err) {
+				if (!mounted) return;
+				toast.error(`Failed to load cached scans: ${err}`);
+				clearResultView();
+			} finally {
+				if (mounted && !keepScanning) {
+					setScanning(false);
+				}
+			}
 		};
 
-		setup();
+		void setup();
 
 		return () => {
+			mounted = false;
 			for (const unsub of unlistenRefs.current) {
 				unsub();
 			}
 		};
-	}, []);
+	}, [clearResultView, loadResultView, refreshHistory]);
+
+	const openHistoryEntry = useCallback(
+		async (scanId: string) => {
+			try {
+				const result = await invoke<ScanResult>("activate_scan", { id: scanId });
+				await loadResultView(result);
+			} catch (err) {
+				toast.error(`Failed to load cached scan: ${err}`);
+			}
+		},
+		[loadResultView],
+	);
+
+	const deleteHistoryEntry = useCallback(
+		async (scanId: string) => {
+			try {
+				await invoke("delete_scan", { id: scanId });
+				await refreshHistory();
+				if (activeScanId !== scanId) return;
+				try {
+					const next = await invoke<ScanResult>("get_scan_result");
+					await loadResultView(next);
+				} catch {
+					clearResultView();
+				}
+			} catch (err) {
+				toast.error(`Failed to delete cached scan: ${err}`);
+			}
+		},
+		[activeScanId, clearResultView, loadResultView, refreshHistory],
+	);
 
 	const drillDown = useCallback(async (node: ScanNode) => {
 		if (node.kind !== "directory") return;
@@ -212,6 +298,79 @@ function ResultsPage() {
 
 				{/* Tree panel */}
 				<div className="z-20 flex w-80 shrink-0 flex-col overflow-hidden border-border/50 border-l bg-card/20">
+					<div className="border-border/40 border-b">
+						<div className="flex items-center justify-between px-4 py-3">
+							<span className="font-medium text-foreground text-xs tracking-wide">
+								Recent Scans
+							</span>
+							<span className="rounded-md bg-muted/50 px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+								{history.length}
+							</span>
+						</div>
+						<ScrollArea className="max-h-40 border-border/40 border-t">
+							{history.length === 0 ? (
+								<p className="px-4 py-3 text-muted-foreground text-xs">
+									No cached scans yet
+								</p>
+							) : (
+								<div className="space-y-1 p-2">
+									{history.map((entry) => (
+										<div
+											key={entry.scan_id}
+											className={`flex items-center gap-1 rounded-md border px-1.5 py-1 ${
+												entry.scan_id === activeScanId
+													? "border-primary/50 bg-primary/5"
+													: "border-transparent"
+											}`}
+										>
+											<button
+												type="button"
+												onClick={() => void openHistoryEntry(entry.scan_id)}
+												className="min-w-0 flex-1 rounded px-1.5 py-1 text-left transition-colors hover:bg-muted/50"
+											>
+												<p
+													className="truncate font-medium text-[11px]"
+													title={entry.root_path}
+												>
+													{entry.root_path}
+												</p>
+												<p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
+													{formatBytes(entry.total_size)} ·{" "}
+													{formatDuration(entry.elapsed_ms)} ·{" "}
+													{formatScanTimestamp(entry.created_at_ms)}
+												</p>
+											</button>
+											<button
+												type="button"
+												onClick={() => void deleteHistoryEntry(entry.scan_id)}
+												className="rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+												aria-label="Delete cached scan"
+											>
+												<svg
+													aria-hidden="true"
+													width="13"
+													height="13"
+													viewBox="0 0 24 24"
+													fill="none"
+													stroke="currentColor"
+													strokeWidth="1.8"
+													strokeLinecap="round"
+													strokeLinejoin="round"
+												>
+													<path d="M3 6h18" />
+													<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+													<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+													<path d="M10 11v6" />
+													<path d="M14 11v6" />
+												</svg>
+											</button>
+										</div>
+									))}
+								</div>
+							)}
+						</ScrollArea>
+					</div>
+
 					<div className="flex items-center justify-between border-border/40 border-b px-4 py-3">
 						<span className="font-medium text-foreground text-xs tracking-wide">
 							Contents
@@ -221,10 +380,18 @@ function ResultsPage() {
 						</span>
 					</div>
 					<ScrollArea className="flex-1">
-						<FolderTree rootChildren={currentChildren} onNavigate={drillDown} />
+						<FolderTree
+							key={activeScanId ?? "empty"}
+							rootChildren={currentChildren}
+							onNavigate={drillDown}
+						/>
 					</ScrollArea>
 				</div>
 			</div>
 		</div>
 	);
+}
+
+function formatScanTimestamp(timestampMs: number): string {
+	return new Date(timestampMs).toLocaleString();
 }

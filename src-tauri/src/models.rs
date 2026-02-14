@@ -44,12 +44,25 @@ pub struct ScanProgressDto {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ScanResultDto {
+    pub scan_id: String,
     pub root_path: String,
     pub root_id: usize,
     pub total_size: u64,
     pub file_count: usize,
     pub dir_count: usize,
     pub elapsed_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ScanHistoryItemDto {
+    pub scan_id: String,
+    pub root_path: String,
+    pub root_id: usize,
+    pub total_size: u64,
+    pub file_count: usize,
+    pub dir_count: usize,
+    pub elapsed_ms: u64,
+    pub created_at_ms: u64,
 }
 
 impl ScanNodeDto {
@@ -73,14 +86,30 @@ impl ScanNodeDto {
 }
 
 impl ScanResultDto {
-    pub fn from_scan_tree(tree: &ScanTree) -> Self {
+    pub fn from_scan_tree(scan_id: impl Into<String>, tree: &ScanTree) -> Self {
         Self {
+            scan_id: scan_id.into(),
             root_path: tree.root_path.to_string_lossy().into_owned(),
             root_id: tree.root_id,
             total_size: tree.root().size_bytes,
             file_count: tree.count_by_kind(NodeKind::File),
             dir_count: tree.count_by_kind(NodeKind::Directory),
             elapsed_ms: tree.elapsed.as_millis() as u64,
+        }
+    }
+}
+
+impl ScanHistoryItemDto {
+    pub fn from_scan_tree(scan_id: impl Into<String>, created_at_ms: u64, tree: &ScanTree) -> Self {
+        Self {
+            scan_id: scan_id.into(),
+            root_path: tree.root_path.to_string_lossy().into_owned(),
+            root_id: tree.root_id,
+            total_size: tree.root().size_bytes,
+            file_count: tree.count_by_kind(NodeKind::File),
+            dir_count: tree.count_by_kind(NodeKind::Directory),
+            elapsed_ms: tree.elapsed.as_millis() as u64,
+            created_at_ms,
         }
     }
 }
