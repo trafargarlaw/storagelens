@@ -174,16 +174,22 @@ function ResultsPage() {
 		}
 	}, []);
 
-	const navigateBreadcrumb = useCallback(async (index: number) => {
-		setBreadcrumb((prev) => {
-			const newCrumbs = prev.slice(0, index + 1);
-			const target = newCrumbs[newCrumbs.length - 1];
-			invoke<ScanNode[]>("get_children", { nodeId: target.id })
-				.then(setCurrentChildren)
-				.catch((err) => toast.error(`Failed to navigate: ${err}`));
-			return newCrumbs;
-		});
-	}, []);
+	const navigateBreadcrumb = useCallback(
+		async (index: number) => {
+			const target = breadcrumb[index];
+			if (!target) return;
+			try {
+				const children = await invoke<ScanNode[]>("get_children", {
+					nodeId: target.id,
+				});
+				setCurrentChildren(children);
+				setBreadcrumb((prev) => prev.slice(0, index + 1));
+			} catch (err) {
+				toast.error(`Failed to navigate: ${err}`);
+			}
+		},
+		[breadcrumb],
+	);
 
 	const goHome = useCallback(() => {
 		navigate({ to: "/" });

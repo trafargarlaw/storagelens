@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc;
+use std::sync::MutexGuard;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -89,7 +90,7 @@ pub fn start_scan(app: AppHandle, path: String) -> Result<(), String> {
                 let scan_id = scan_state.next_scan_id();
                 let created_at_ms = unix_now_ms();
                 let result_dto = {
-                    let mut history = scan_state.scan_history.lock().unwrap();
+                    let mut history = lock_history(&scan_state);
                     history.insert_scan(CachedScan {
                         id: scan_id.clone(),
                         created_at_ms,
@@ -123,7 +124,7 @@ pub fn is_scanning(app: AppHandle) -> bool {
 #[tauri::command]
 pub fn list_scan_history(app: AppHandle) -> Vec<ScanHistoryItemDto> {
     let state = app.state::<AppState>();
-    let history = state.scan_history.lock().unwrap();
+    let history = lock_history(&state);
     history
         .scans
         .iter()
@@ -136,7 +137,7 @@ pub fn list_scan_history(app: AppHandle) -> Vec<ScanHistoryItemDto> {
 #[tauri::command]
 pub fn activate_scan(app: AppHandle, id: String) -> Result<ScanResultDto, String> {
     let state = app.state::<AppState>();
-    let mut history = state.scan_history.lock().unwrap();
+    let mut history = lock_history(&state);
     let found = history.scans.iter().any(|scan| scan.id == id);
     if !found {
         return Err("Scan not found".into());
@@ -149,7 +150,7 @@ pub fn activate_scan(app: AppHandle, id: String) -> Result<ScanResultDto, String
 #[tauri::command]
 pub fn delete_scan(app: AppHandle, id: String) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let mut history = state.scan_history.lock().unwrap();
+    let mut history = lock_history(&state);
     let before_len = history.scans.len();
     history.scans.retain(|scan| scan.id != id);
     if history.scans.len() == before_len {
@@ -225,7 +226,7 @@ pub fn reveal_in_finder(path: String) -> Result<(), String> {
 #[tauri::command]
 pub fn get_scan_result(app: AppHandle) -> Result<ScanResultDto, String> {
     let state = app.state::<AppState>();
-    let history = state.scan_history.lock().unwrap();
+    let history = lock_history(&state);
     let active = history.active_scan().ok_or("No scan data available")?;
     Ok(ScanResultDto::from_scan_tree(active.id.clone(), &active.tree))
 }
@@ -247,7 +248,14 @@ fn with_active_tree<T>(
     state: &AppState,
     map: impl FnOnce(&ScanTree) -> Result<T, String>,
 ) -> Result<T, String> {
-    let history = state.scan_history.lock().unwrap();
+    let history = lock_history(state);
     let active = history.active_scan().ok_or("No scan data available")?;
     map(&active.tree)
+}
+
+fn lock_history(state: &AppState) -> MutexGuard<'_, crate::state::ScanHistoryState> {
+    state
+        .scan_history
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
