@@ -51,13 +51,31 @@ jobs:
           KEY_FILE="$RUNNER_TEMP/tauri-updater.key"
           RAW_KEY='${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}'
 
-          if printf '%s' "$RAW_KEY" | grep -q '^untrusted comment:'; then
-            printf '%s' "$RAW_KEY" > "$KEY_FILE"
-          else
-            printf '%s' "$RAW_KEY" | base64 --decode > "$KEY_FILE"
+          decode_base64() {
+            printf '%s' "$1" | tr -d '\r\n' | base64 --decode 2>/dev/null
+          }
+
+          CANDIDATE="$RAW_KEY"
+          if ! printf '%s' "$CANDIDATE" | grep -q '^untrusted comment:'; then
+            if DECODED="$(decode_base64 "$CANDIDATE")"; then
+              CANDIDATE="$DECODED"
+            fi
+          fi
+          if ! printf '%s' "$CANDIDATE" | grep -q '^untrusted comment:'; then
+            if DECODED2="$(decode_base64 "$CANDIDATE")"; then
+              CANDIDATE="$DECODED2"
+            fi
           fi
 
-          if ! head -n 1 "$KEY_FILE" | grep -q '^untrusted comment: .*secret key'; then
+          printf '%s' "$CANDIDATE" > "$KEY_FILE"
+
+          HEADER="$(head -n 1 "$KEY_FILE" || true)"
+          if printf '%s' "$HEADER" | grep -q '^untrusted comment: .*secret key'; then
+            :
+          elif printf '%s' "$HEADER" | grep -q '^untrusted comment: .*public key'; then
+            echo "TAURI_SIGNING_PRIVATE_KEY currently contains a PUBLIC key. Use ~/.tauri/storagelens.key, not ~/.tauri/storagelens.key.pub"
+            exit 1
+          else
             echo "Invalid updater private key format in TAURI_SIGNING_PRIVATE_KEY"
             exit 1
           fi
