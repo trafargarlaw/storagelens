@@ -1,6 +1,6 @@
 [package]
 name = "storagelens"
-version = "0.2.2"
+version = "0.2.3"
 description = "Desktop disk usage scanner built with Tauri"
 authors = ["StorageLens Contributors"]
 edition = "2021"
@@ -15,6 +15,8 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+tauri-plugin-process = "2"
+tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sysinfo = "0.33"
