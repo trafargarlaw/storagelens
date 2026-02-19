@@ -35,52 +35,38 @@ jobs:
 
       - name: Prepare updater signing key
         shell: bash
-        env:
-          RAW_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
           KEY_FILE="$RUNNER_TEMP/tauri-updater.key"
-          export KEY_FILE
-          node <<'NODE'
-          const fs = require("fs");
+          RAW_KEY='${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}'
 
-          const keyFile = process.env.KEY_FILE;
-          let candidate = (process.env.RAW_KEY || "").trim();
-
-          const tryDecode = (input) => {
-            try {
-              return Buffer.from(input.replace(/[\r\n]/g, ""), "base64").toString("utf8");
-            } catch {
-              return null;
-            }
-          };
-
-          if (!candidate.startsWith("untrusted comment:")) {
-            const decoded = tryDecode(candidate);
-            if (decoded && decoded.includes("untrusted comment:")) {
-              candidate = decoded.trim();
-            }
-          }
-          if (!candidate.startsWith("untrusted comment:")) {
-            const decodedAgain = tryDecode(candidate);
-            if (decodedAgain && decodedAgain.includes("untrusted comment:")) {
-              candidate = decodedAgain.trim();
-            }
+          decode_base64() {
+            printf '%s' "$1" | tr -d '\r\n' | base64 --decode 2>/dev/null
           }
 
-          candidate = candidate.replace(/\r\n/g, "\n");
-          const header = candidate.split("\n")[0] || "";
+          CANDIDATE="$RAW_KEY"
+          if ! printf '%s' "$CANDIDATE" | grep -q '^untrusted comment:'; then
+            if DECODED="$(decode_base64 "$CANDIDATE")"; then
+              CANDIDATE="$DECODED"
+            fi
+          fi
+          if ! printf '%s' "$CANDIDATE" | grep -q '^untrusted comment:'; then
+            if DECODED2="$(decode_base64 "$CANDIDATE")"; then
+              CANDIDATE="$DECODED2"
+            fi
+          fi
 
-          if (header.includes("public key")) {
-            console.error("TAURI_SIGNING_PRIVATE_KEY currently contains a PUBLIC key. Use ~/.tauri/storagelens.key, not ~/.tauri/storagelens.key.pub");
-            process.exit(1);
-          }
-          if (!header.includes("secret key")) {
-            console.error("Invalid updater private key format in TAURI_SIGNING_PRIVATE_KEY");
-            process.exit(1);
-          }
+          printf '%s' "$CANDIDATE" > "$KEY_FILE"
 
-          fs.writeFileSync(keyFile, candidate, { encoding: "utf8" });
-          NODE
+          HEADER="$(head -n 1 "$KEY_FILE" || true)"
+          if printf '%s' "$HEADER" | grep -q '^untrusted comment: .*secret key'; then
+            :
+          elif printf '%s' "$HEADER" | grep -q '^untrusted comment: .*public key'; then
+            echo "TAURI_SIGNING_PRIVATE_KEY currently contains a PUBLIC key. Use ~/.tauri/storagelens.key, not ~/.tauri/storagelens.key.pub"
+            exit 1
+          else
+            echo "Invalid updater private key format in TAURI_SIGNING_PRIVATE_KEY"
+            exit 1
+          fi
 
           echo "TAURI_SIGNING_PRIVATE_KEY_PATH=$KEY_FILE" >> "$GITHUB_ENV"
 
