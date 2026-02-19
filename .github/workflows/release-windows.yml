@@ -33,11 +33,30 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Prepare updater signing key
+        shell: bash
+        run: |
+          KEY_FILE="$RUNNER_TEMP/tauri-updater.key"
+          RAW_KEY='${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}'
+
+          if printf '%s' "$RAW_KEY" | grep -q '^untrusted comment:'; then
+            printf '%s' "$RAW_KEY" > "$KEY_FILE"
+          else
+            printf '%s' "$RAW_KEY" | base64 --decode > "$KEY_FILE"
+          fi
+
+          if ! head -n 1 "$KEY_FILE" | grep -q '^untrusted comment: .*secret key'; then
+            echo "Invalid updater private key format in TAURI_SIGNING_PRIVATE_KEY"
+            exit 1
+          fi
+
+          echo "TAURI_SIGNING_PRIVATE_KEY_PATH=$KEY_FILE" >> "$GITHUB_ENV"
+
       - name: Build + publish Windows bundles
         uses: tauri-apps/tauri-action@action-v0.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PATH: ${{ env.TAURI_SIGNING_PRIVATE_KEY_PATH }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
