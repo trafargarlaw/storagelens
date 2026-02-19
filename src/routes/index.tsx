@@ -5,7 +5,7 @@ import {
 } from "@tanstack/react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { AppLogo } from "@/components/app-logo";
@@ -33,6 +33,31 @@ function ScanSetupPage() {
 	const { volumes, history: initialHistory } = useLoaderData({ from: "/" });
 	const [history, setHistory] = useState(initialHistory);
 	const navigate = useNavigate();
+
+	useEffect(() => {
+		setHistory(initialHistory);
+	}, [initialHistory]);
+
+	useEffect(() => {
+		let mounted = true;
+
+		const refreshHistory = async () => {
+			try {
+				const entries = await invoke<ScanHistoryItem[]>("list_scan_history");
+				if (mounted) {
+					setHistory(entries);
+				}
+			} catch (err) {
+				toast.error(`Failed to load cached results: ${err}`);
+			}
+		};
+
+		void refreshHistory();
+
+		return () => {
+			mounted = false;
+		};
+	}, []);
 
 	const startScan = useCallback(
 		async (path: string) => {

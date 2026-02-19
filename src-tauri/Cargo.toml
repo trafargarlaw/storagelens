@@ -1,6 +1,6 @@
 [package]
 name = "storagelens"
-version = "0.2.0"
+version = "0.2.2"
 description = "Desktop disk usage scanner built with Tauri"
 authors = ["StorageLens Contributors"]
 edition = "2021"
