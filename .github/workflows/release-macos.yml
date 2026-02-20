@@ -45,73 +45,49 @@ jobs:
           printf '%s' "${{ secrets.APPLE_API_KEY_CONTENT }}" > "$KEY_PATH"
           echo "APPLE_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
 
-      - name: Prepare updater signing key
+      - name: Validate updater signing secret
         shell: bash
         env:
           RAW_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           RAW_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          KEY_FILE="$RUNNER_TEMP/tauri-updater.key"
-          export KEY_FILE
-
-          if [ -z "$RAW_KEY" ]; then
-            echo "TAURI_SIGNING_PRIVATE_KEY is empty/unavailable in this job."
-            exit 1
-          fi
-
-          if [ -z "$RAW_PASSWORD" ]; then
-            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD is empty/unavailable in this job."
-            exit 1
-          fi
-
           node <<'NODE'
-          const fs = require("fs");
+          const rawKey = (process.env.RAW_KEY || "").trim();
+          const rawPassword = process.env.RAW_PASSWORD || "";
 
-          const keyFile = process.env.KEY_FILE;
-          let candidate = (process.env.RAW_KEY || "").trim();
-
-          const tryDecode = (input) => {
-            try {
-              return Buffer.from(input.replace(/[\r\n]/g, ""), "base64").toString("utf8");
-            } catch {
-              return null;
-            }
-          };
-
-          if (!candidate.startsWith("untrusted comment:")) {
-            const decoded = tryDecode(candidate);
-            if (decoded && decoded.includes("untrusted comment:")) {
-              candidate = decoded.trim();
-            }
+          if (!rawKey) {
+            console.error("TAURI_SIGNING_PRIVATE_KEY is empty/unavailable in this job.");
+            process.exit(1);
           }
-          if (!candidate.startsWith("untrusted comment:")) {
-            const decodedAgain = tryDecode(candidate);
-            if (decodedAgain && decodedAgain.includes("untrusted comment:")) {
-              candidate = decodedAgain.trim();
-            }
+          if (!rawPassword) {
+            console.error("TAURI_SIGNING_PRIVATE_KEY_PASSWORD is empty/unavailable in this job.");
+            process.exit(1);
           }
 
-          candidate = candidate.replace(/\r\n/g, "\n");
-          const header = candidate.split("\n")[0] || "";
+          let decoded = "";
+          try {
+            decoded = Buffer.from(rawKey.replace(/[\r\n]/g, ""), "base64").toString("utf8");
+          } catch {
+            console.error("TAURI_SIGNING_PRIVATE_KEY is not valid base64.");
+            process.exit(1);
+          }
 
+          const header = decoded.split("\n")[0] || "";
           if (header.includes("public key")) {
-            console.error("TAURI_SIGNING_PRIVATE_KEY currently contains a PUBLIC key. Use ~/.tauri/storagelens.key, not ~/.tauri/storagelens.key.pub");
+            console.error("TAURI_SIGNING_PRIVATE_KEY contains a PUBLIC key. Use ~/.tauri/storagelens.key, not ~/.tauri/storagelens.key.pub");
             process.exit(1);
           }
           if (!header.includes("secret key")) {
-            console.error("Invalid updater private key format in TAURI_SIGNING_PRIVATE_KEY");
+            console.error("TAURI_SIGNING_PRIVATE_KEY does not look like a valid updater secret key.");
             process.exit(1);
           }
-
-          fs.writeFileSync(keyFile, candidate, { encoding: "utf8" });
           NODE
-
-          echo "TAURI_SIGNING_PRIVATE_KEY_PATH=$KEY_FILE" >> "$GITHUB_ENV"
 
       - name: Build signed + notarized bundle
         uses: tauri-apps/tauri-action@action-v0.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
