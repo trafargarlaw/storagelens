@@ -385,7 +385,7 @@ function ResultsPage() {
 							{currentChildren.length}
 						</span>
 					</div>
-					<ScrollArea className="flex-1">
+					<ScrollArea className="min-h-0 flex-1">
 						<FolderTree
 							key={activeScanId ?? "empty"}
 							rootChildren={currentChildren}
