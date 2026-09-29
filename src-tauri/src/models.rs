@@ -66,9 +66,10 @@ pub struct ScanHistoryItemDto {
 }
 
 impl ScanNodeDto {
-    pub fn from_scan_node(node: &ScanNode) -> Self {
+    pub fn from_scan_node(id: usize, node: &ScanNode) -> Self {
+        let errors = node.error_counts();
         Self {
-            id: node.id,
+            id,
             parent_id: node.parent_id,
             name: node.name.to_string_lossy().into_owned(),
             kind: node.kind.as_str().to_owned(),
@@ -76,10 +77,10 @@ impl ScanNodeDto {
             direct_size_bytes: node.direct_size_bytes,
             child_count: node.children.len(),
             errors: ErrorCountsDto {
-                denied: node.errors.denied,
-                missing: node.errors.missing,
-                symlinks: node.errors.symlinks,
-                other: node.errors.other,
+                denied: errors.denied,
+                missing: errors.missing,
+                symlinks: errors.symlinks,
+                other: errors.other,
             },
         }
     }

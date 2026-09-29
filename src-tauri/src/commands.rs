@@ -170,8 +170,11 @@ pub fn get_children(app: AppHandle, node_id: usize) -> Result<Vec<ScanNodeDto>, 
         let children: Vec<ScanNodeDto> = node
             .children
             .iter()
-            .filter_map(|&child_id| tree.nodes.get(child_id))
-            .map(ScanNodeDto::from_scan_node)
+            .filter_map(|&child_id| {
+                tree.nodes
+                    .get(child_id)
+                    .map(|child| ScanNodeDto::from_scan_node(child_id, child))
+            })
             .collect();
         Ok(children)
     })

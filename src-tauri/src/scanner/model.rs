@@ -1,4 +1,4 @@
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::io::{self, ErrorKind};
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -35,50 +35,54 @@ impl ErrorCounts {
             _ => self.other += 1,
         }
     }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.denied == 0 && self.missing == 0 && self.symlinks == 0 && self.other == 0
+    }
 }
 
+/// One file or directory in a scan. A node's id is its index in `ScanTree::nodes`.
+///
+/// Scans hold one node per file, so the layout is kept compact: boxed slices instead of
+/// growable `Vec`/`OsString`, and error counts (rare, directory-only) behind an `Option<Box>`.
 #[derive(Debug)]
 pub struct ScanNode {
-    pub id: usize,
     pub parent_id: Option<usize>,
-    pub name: OsString,
+    pub name: Box<OsStr>,
     pub kind: NodeKind,
     pub direct_size_bytes: u64,
     pub size_bytes: u64,
-    pub children: Vec<usize>,
-    pub errors: ErrorCounts,
+    pub children: Box<[usize]>,
+    pub errors: Option<Box<ErrorCounts>>,
 }
 
 impl ScanNode {
-    pub(crate) fn new_directory(id: usize, parent_id: Option<usize>, name: OsString) -> Self {
+    pub(crate) fn new_directory(parent_id: Option<usize>, name: OsString) -> Self {
         Self {
-            id,
             parent_id,
-            name,
+            name: name.into_boxed_os_str(),
             kind: NodeKind::Directory,
             direct_size_bytes: 0,
             size_bytes: 0,
-            children: Vec::new(),
-            errors: ErrorCounts::default(),
+            children: Box::default(),
+            errors: None,
         }
     }
 
-    pub(crate) fn new_file(
-        id: usize,
-        parent_id: Option<usize>,
-        name: OsString,
-        size_bytes: u64,
-    ) -> Self {
+    pub(crate) fn new_file(parent_id: Option<usize>, name: OsString, size_bytes: u64) -> Self {
         Self {
-            id,
             parent_id,
-            name,
+            name: name.into_boxed_os_str(),
             kind: NodeKind::File,
             direct_size_bytes: size_bytes,
             size_bytes,
-            children: Vec::new(),
-            errors: ErrorCounts::default(),
+            children: Box::default(),
+            errors: None,
         }
+    }
+
+    pub fn error_counts(&self) -> ErrorCounts {
+        self.errors.as_deref().copied().unwrap_or_default()
     }
 }
 
@@ -106,14 +110,14 @@ impl ScanTree {
             return self.root_path.clone();
         }
 
-        let mut segments: Vec<OsString> = Vec::new();
+        let mut segments: Vec<&OsStr> = Vec::new();
         let mut cursor = node_id;
         loop {
             let node = &self.nodes[cursor];
             if cursor == self.root_id {
                 break;
             }
-            segments.push(node.name.clone());
+            segments.push(&node.name);
             cursor = node
                 .parent_id
                 .expect("non-root nodes must always have a parent");

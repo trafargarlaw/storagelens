@@ -3,6 +3,8 @@ use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
+use std::process::Command;
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -164,7 +166,7 @@ pub fn scan_tree(config: &ScanConfig) -> io::Result<ScanTree> {
     drop(result_tx);
 
     let mut nodes = Vec::new();
-    nodes.push(ScanNode::new_directory(0, None, root_name(&config.root)));
+    nodes.push(ScanNode::new_directory(None, root_name(&config.root)));
 
     if !queue.push(ScanTask {
         node_id: 0,
@@ -202,7 +204,6 @@ pub fn scan_tree(config: &ScanConfig) -> io::Result<ScanTree> {
                     direct_size = direct_size.saturating_add(file.size_bytes);
                     let child_id = nodes.len();
                     nodes.push(ScanNode::new_file(
-                        child_id,
                         Some(node_id),
                         file.name,
                         file.size_bytes,
@@ -228,11 +229,7 @@ pub fn scan_tree(config: &ScanConfig) -> io::Result<ScanTree> {
                     }
 
                     let child_id = nodes.len();
-                    nodes.push(ScanNode::new_directory(
-                        child_id,
-                        Some(node_id),
-                        directory.name,
-                    ));
+                    nodes.push(ScanNode::new_directory(Some(node_id), directory.name));
                     new_child_ids.push(child_id);
                     if queue.push(ScanTask {
                         node_id: child_id,
@@ -249,8 +246,10 @@ pub fn scan_tree(config: &ScanConfig) -> io::Result<ScanTree> {
 
                 if let Some(directory_node) = nodes.get_mut(node_id) {
                     directory_node.direct_size_bytes = direct_size;
-                    directory_node.errors = output.errors;
-                    directory_node.children.extend(new_child_ids);
+                    if !output.errors.is_empty() {
+                        directory_node.errors = Some(Box::new(output.errors));
+                    }
+                    directory_node.children = new_child_ids.into_boxed_slice();
                 } else if failure.is_none() {
                     failure = Some(io::Error::other(
                         "worker referenced an unknown directory node",
@@ -597,8 +596,9 @@ fn scan_directory(path: &Path) -> DirectoryScan {
             }
         };
 
-        let path = entry.path();
-        let metadata = match fs::symlink_metadata(&path) {
+        // Doesn't follow symlinks. On Windows this reuses the data already returned by the
+        // directory listing instead of opening every file, which is most of the scan cost.
+        let metadata = match entry.metadata() {
             Ok(metadata) => metadata,
             Err(error) => {
                 output.errors.record_io_error(&error);
@@ -615,7 +615,7 @@ fn scan_directory(path: &Path) -> DirectoryScan {
         if file_type.is_dir() {
             output.child_directories.push(DirectoryEntry {
                 name: entry.file_name(),
-                path,
+                path: entry.path(),
                 object_id: filesystem_object_id(&metadata),
             });
             continue;
@@ -667,23 +667,21 @@ fn compute_recursive_sizes(nodes: &mut [ScanNode], root_id: usize) {
 }
 
 fn sort_children_for_ui(nodes: &mut [ScanNode]) {
-    let sizes: Vec<u64> = nodes.iter().map(|node| node.size_bytes).collect();
-    let kinds: Vec<NodeKind> = nodes.iter().map(|node| node.kind).collect();
-    let names: Vec<String> = nodes
-        .iter()
-        .map(|node| node.name.to_string_lossy().into_owned())
-        .collect();
+    for node_id in 0..nodes.len() {
+        if nodes[node_id].kind != NodeKind::Directory {
+            continue;
+        }
 
-    for node in nodes
-        .iter_mut()
-        .filter(|node| node.kind == NodeKind::Directory)
-    {
-        node.children.sort_by(|a, b| {
-            kind_rank(kinds[*a])
-                .cmp(&kind_rank(kinds[*b]))
-                .then_with(|| sizes[*b].cmp(&sizes[*a]))
-                .then_with(|| names[*a].cmp(&names[*b]))
+        // Take the children out so the comparator can borrow the other nodes directly.
+        let mut children = std::mem::take(&mut nodes[node_id].children);
+        children.sort_unstable_by(|a, b| {
+            let (a, b) = (&nodes[*a], &nodes[*b]);
+            kind_rank(a.kind)
+                .cmp(&kind_rank(b.kind))
+                .then_with(|| b.size_bytes.cmp(&a.size_bytes))
+                .then_with(|| a.name.cmp(&b.name))
         });
+        nodes[node_id].children = children;
     }
 }
 
@@ -787,7 +785,7 @@ mod tests {
             })?;
 
             assert_eq!(tree.root().size_bytes, 7);
-            assert_eq!(tree.root().errors.symlinks, 1);
+            assert_eq!(tree.root().error_counts().symlinks, 1);
 
             Ok(())
         })();
