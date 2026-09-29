@@ -1,377 +1,324 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { FolderTree } from "@/components/folder-tree";
-import { ScanProgressDisplay } from "@/components/scan-progress";
-import { SizeTreemap } from "@/components/size-treemap";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { formatBytes, formatDuration, formatNumber } from "@/lib/format";
-import type { ScanHistoryItem, ScanNode, ScanProgress, ScanResult } from "@/types";
+
+import { type FileListHandle, FileList, type SortState, sortNodes } from "@/components/file-list";
+import {
+  ArrowUpIcon,
+  ChevronRightIcon,
+  EllipsisIcon,
+  FolderOpenIcon,
+  RefreshIcon,
+} from "@/components/icons";
+import { Toolbar, ToolbarSpacer } from "@/components/toolbar";
+import { Treemap } from "@/components/treemap";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/menu";
+import { useNow } from "@/hooks/use-now";
+import {
+  formatBytes,
+  formatDuration,
+  formatNumber,
+  formatPercent,
+  formatRelativeTime,
+} from "@/lib/format";
+import { pathTitle, revealLabel } from "@/lib/paths";
+import { useScanStore } from "@/lib/scan-store";
+import type { ScanNode, ScanResult } from "@/types";
 
 export const Route = createFileRoute("/results")({
   component: ResultsPage,
 });
 
-interface BreadcrumbItem {
-  id: number;
-  name: string;
-}
-
 function ResultsPage() {
-  const navigate = useNavigate();
-  const [scanning, setScanning] = useState(true);
-  const [progress, setProgress] = useState<ScanProgress | null>(null);
-  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
-  const [history, setHistory] = useState<ScanHistoryItem[]>([]);
-  const [activeScanId, setActiveScanId] = useState<string | null>(null);
-  const [currentChildren, setCurrentChildren] = useState<ScanNode[]>([]);
-  const [breadcrumb, setBreadcrumb] = useState<BreadcrumbItem[]>([]);
-  const unlistenRefs = useRef<Array<() => void>>([]);
+  const { result } = useScanStore();
 
-  const clearResultView = useCallback(() => {
-    setScanResult(null);
-    setActiveScanId(null);
-    setCurrentChildren([]);
-    setBreadcrumb([]);
-  }, []);
-
-  const refreshHistory = useCallback(async () => {
-    const entries = await invoke<ScanHistoryItem[]>("list_scan_history");
-    setHistory(entries);
-    return entries;
-  }, []);
-
-  const loadResultView = useCallback(async (result: ScanResult) => {
-    setScanResult(result);
-    setActiveScanId(result.scan_id);
-    const children = await invoke<ScanNode[]>("get_children", {
-      nodeId: result.root_id,
-    });
-    setCurrentChildren(children);
-    setBreadcrumb([{ id: result.root_id, name: result.root_path }]);
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const setup = async () => {
-      const unProgress = await listen<ScanProgress>("scan-progress", (event) => {
-        setProgress(event.payload);
-        setScanning(true);
-      });
-
-      const unComplete = await listen<ScanResult>("scan-complete", async (event) => {
-        setScanning(false);
-        try {
-          await loadResultView(event.payload);
-          await refreshHistory();
-        } catch (err) {
-          toast.error(`Failed to load: ${err}`);
-        }
-      });
-
-      const unError = await listen<string>("scan-error", (event) => {
-        setScanning(false);
-        toast.error(`Scan failed: ${event.payload}`);
-      });
-
-      unlistenRefs.current = [unProgress, unComplete, unError];
-
-      let keepScanning = false;
-      try {
-        await refreshHistory();
-        const currentlyScanning = await invoke<boolean>("is_scanning");
-        if (!mounted) return;
-
-        if (currentlyScanning) {
-          setScanning(true);
-          keepScanning = true;
-          return;
-        }
-
-        try {
-          const result = await invoke<ScanResult>("get_scan_result");
-          if (!mounted) return;
-          await loadResultView(result);
-        } catch {
-          if (!mounted) return;
-          clearResultView();
-        }
-      } catch (err) {
-        if (!mounted) return;
-        toast.error(`Failed to load cached scans: ${err}`);
-        clearResultView();
-      } finally {
-        if (mounted && !keepScanning) {
-          setScanning(false);
-        }
-      }
-    };
-
-    void setup();
-
-    return () => {
-      mounted = false;
-      for (const unsub of unlistenRefs.current) {
-        unsub();
-      }
-    };
-  }, [clearResultView, loadResultView, refreshHistory]);
-
-  const openHistoryEntry = useCallback(
-    async (scanId: string) => {
-      try {
-        const result = await invoke<ScanResult>("activate_scan", { id: scanId });
-        await loadResultView(result);
-      } catch (err) {
-        toast.error(`Failed to load cached scan: ${err}`);
-      }
-    },
-    [loadResultView],
-  );
-
-  const deleteHistoryEntry = useCallback(
-    async (scanId: string) => {
-      try {
-        await invoke("delete_scan", { id: scanId });
-        await refreshHistory();
-        if (activeScanId !== scanId) return;
-        try {
-          const next = await invoke<ScanResult>("get_scan_result");
-          await loadResultView(next);
-        } catch {
-          clearResultView();
-        }
-      } catch (err) {
-        toast.error(`Failed to delete cached scan: ${err}`);
-      }
-    },
-    [activeScanId, clearResultView, loadResultView, refreshHistory],
-  );
-
-  const drillDown = useCallback(async (node: ScanNode) => {
-    if (node.kind !== "directory") return;
-    try {
-      const children = await invoke<ScanNode[]>("get_children", {
-        nodeId: node.id,
-      });
-      setCurrentChildren(children);
-      setBreadcrumb((prev) => [...prev, { id: node.id, name: node.name }]);
-    } catch (err) {
-      toast.error(`Failed to load: ${err}`);
-    }
-  }, []);
-
-  const navigateBreadcrumb = useCallback(
-    async (index: number) => {
-      const target = breadcrumb[index];
-      if (!target) return;
-      try {
-        const children = await invoke<ScanNode[]>("get_children", {
-          nodeId: target.id,
-        });
-        setCurrentChildren(children);
-        setBreadcrumb((prev) => prev.slice(0, index + 1));
-      } catch (err) {
-        toast.error(`Failed to navigate: ${err}`);
-      }
-    },
-    [breadcrumb],
-  );
-
-  const goHome = useCallback(() => {
-    navigate({ to: "/" });
-  }, [navigate]);
-
-  // Scanning state
-  if (scanning) {
-    return <ScanProgressDisplay progress={progress} />;
-  }
-
-  // No result (error case)
-  if (!scanResult) {
+  if (!result) {
     return (
-      <div className="flex min-h-full flex-col items-center justify-center gap-4 bg-background px-6">
-        <p className="text-sm text-muted-foreground">No scan results available</p>
-        <Button variant="outline" onClick={goHome}>
-          Back to scanner
-        </Button>
-      </div>
+      <>
+        <Toolbar>
+          <ToolbarSpacer />
+        </Toolbar>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+          <p className="text-muted-foreground">No scan is open.</p>
+          <Link to="/" className={buttonVariants({ variant: "outline", size: "lg" })}>
+            Go to Overview
+          </Link>
+        </div>
+      </>
     );
   }
 
+  return <ResultsView key={result.scan_id} result={result} />;
+}
+
+interface Crumb {
+  id: number;
+  name: string;
+  size: number;
+}
+
+const DEFAULT_SORT: SortState = { key: "size", direction: "desc" };
+
+function ResultsView({ result }: { result: ScanResult }) {
+  const { volumes, history, scanning, startScan } = useScanStore();
+  const now = useNow(30_000);
+  const rootTitle = pathTitle(result.root_path, volumes);
+
+  const [crumbs, setCrumbs] = useState<Crumb[]>(() => [
+    { id: result.root_id, name: rootTitle, size: result.total_size },
+  ]);
+  const [children, setChildren] = useState<ScanNode[] | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [highlightedId, setHighlightedId] = useState<number | null>(null);
+  const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
+  const listRef = useRef<FileListHandle>(null);
+
+  const current = crumbs[crumbs.length - 1];
+  const isRoot = crumbs.length === 1;
+  const folderName = isRoot ? rootTitle : current.name;
+
+  // Load the current folder, keeping the previous one on screen until it arrives.
+  useEffect(() => {
+    let cancelled = false;
+    invoke<ScanNode[]>("get_children", { nodeId: current.id })
+      .then((nodes) => {
+        if (!cancelled) setChildren(nodes);
+      })
+      .catch((err) => {
+        if (!cancelled) toast.error(`Couldn't open this folder: ${err}`);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [current.id]);
+
+  useEffect(() => {
+    listRef.current?.focus();
+  }, []);
+
+  const sorted = useMemo(() => (children ? sortNodes(children, sort) : []), [children, sort]);
+
+  const openFolder = useCallback((node: ScanNode) => {
+    if (node.kind !== "directory") return;
+    setCrumbs((prev) => [...prev, { id: node.id, name: node.name, size: node.size_bytes }]);
+    setSelectedId(null);
+    setHighlightedId(null);
+  }, []);
+
+  /** Goes back to `crumbs[index]`, selecting the folder we came out of. */
+  const goTo = useCallback(
+    (index: number) => {
+      if (index >= crumbs.length - 1) return;
+      setSelectedId(crumbs[index + 1].id);
+      setCrumbs(crumbs.slice(0, index + 1));
+      setHighlightedId(null);
+    },
+    [crumbs],
+  );
+
+  const goUp = useCallback(() => goTo(crumbs.length - 2), [crumbs.length, goTo]);
+
+  const reveal = useCallback(async (nodeId: number) => {
+    try {
+      const path = await invoke<string>("get_node_path", { nodeId });
+      await invoke("reveal_in_finder", { path });
+    } catch (err) {
+      toast.error(`Couldn't open the file manager: ${err}`);
+    }
+  }, []);
+
+  // The mouse "back" button goes up a level instead of leaving the results.
+  useEffect(() => {
+    const onMouseUp = (event: MouseEvent) => {
+      if (event.button !== 3 || isRoot) return;
+      event.preventDefault();
+      goUp();
+    };
+    window.addEventListener("mouseup", onMouseUp);
+    return () => window.removeEventListener("mouseup", onMouseUp);
+  }, [goUp, isRoot]);
+
+  const createdAt = history.find((item) => item.scan_id === result.scan_id)?.created_at_ms;
+  const summary = isRoot
+    ? [
+        formatBytes(result.total_size),
+        `${formatNumber(result.file_count)} files`,
+        `${formatNumber(result.dir_count)} folders`,
+        createdAt
+          ? `Scanned ${formatRelativeTime(createdAt, now).toLowerCase()} in ${formatDuration(result.elapsed_ms)}`
+          : `Scanned in ${formatDuration(result.elapsed_ms)}`,
+      ]
+    : [
+        formatBytes(current.size),
+        children ? `${formatNumber(children.length)} items` : null,
+        `${formatPercent(result.total_size > 0 ? current.size / result.total_size : 0)} of ${rootTitle}`,
+      ];
+
   return (
-    <div className="page-enter flex h-full flex-col overflow-hidden bg-background">
-      {/* Header */}
-      <header className="z-10 flex h-12 shrink-0 items-center justify-between border-b border-border/50 bg-card/30 px-4">
-        <div className="flex items-center gap-2 overflow-hidden">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={goHome}
-            className="size-7 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            <svg
-              aria-hidden="true"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="m15 18-6-6 6-6" />
-            </svg>
+    <>
+      <Toolbar className="gap-1 pl-2">
+        <Button
+          variant="ghost"
+          size="icon"
+          disabled={isRoot}
+          onClick={goUp}
+          aria-label="Up one level"
+          title="Up one level (Backspace)"
+        >
+          <ArrowUpIcon />
+        </Button>
+        <Breadcrumbs crumbs={crumbs} rootTitle={rootTitle} onNavigate={goTo} />
+        <ToolbarSpacer />
+        <Button
+          variant="outline"
+          size="lg"
+          disabled={scanning !== null}
+          title={
+            scanning ? "Wait for the current scan to finish" : `Scan ${result.root_path} again`
+          }
+          onClick={() => void startScan(result.root_path)}
+        >
+          <RefreshIcon />
+          Rescan
+        </Button>
+      </Toolbar>
+
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex shrink-0 items-start gap-4 px-5 pt-4 pb-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-[17px] font-semibold" title={folderName}>
+              {folderName}
+            </h1>
+            <p className="mt-0.5 truncate text-[12px] text-muted-foreground tabular-nums">
+              {summary.filter(Boolean).join(" · ")}
+            </p>
+          </div>
+          <Button variant="ghost" size="lg" onClick={() => void reveal(current.id)}>
+            <FolderOpenIcon />
+            {revealLabel}
           </Button>
-
-          {/* Breadcrumb */}
-          <nav className="flex items-center gap-0.5 overflow-hidden text-sm">
-            {breadcrumb.map((crumb, i) => (
-              <span key={crumb.id} className="flex shrink-0 items-center gap-0.5">
-                {i > 0 && (
-                  <svg
-                    aria-hidden="true"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    className="text-muted-foreground/30"
-                  >
-                    <path d="m9 18 6-6-6-6" />
-                  </svg>
-                )}
-                <button
-                  type="button"
-                  onClick={() => navigateBreadcrumb(i)}
-                  className={`max-w-[180px] truncate rounded-md px-1.5 py-0.5 text-xs transition-colors ${
-                    i === breadcrumb.length - 1
-                      ? "font-medium text-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {crumb.name}
-                </button>
-              </span>
-            ))}
-          </nav>
         </div>
 
-        {/* Summary stats */}
-        <div className="hidden items-center gap-4 font-mono text-[11px] text-muted-foreground tabular-nums lg:flex">
-          <span className="font-medium text-primary">{formatBytes(scanResult.total_size)}</span>
-          <span className="text-border">|</span>
-          <span>{formatNumber(scanResult.file_count)} files</span>
-          <span className="text-border">|</span>
-          <span>{formatNumber(scanResult.dir_count)} dirs</span>
-          <span className="text-border">|</span>
-          <span className="text-muted-foreground/60">{formatDuration(scanResult.elapsed_ms)}</span>
-        </div>
-      </header>
-
-      {/* Main content */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Treemap panel */}
-        <div className="min-w-0 flex-1 p-3">
-          <div className="h-full w-full overflow-hidden rounded-xl border border-border/40 bg-card/20">
-            <SizeTreemap nodes={currentChildren} onDrillDown={drillDown} />
-          </div>
-        </div>
-
-        {/* Tree panel */}
-        <div className="z-20 flex w-80 shrink-0 flex-col overflow-hidden border-l border-border/50 bg-card/20">
-          <div className="border-b border-border/40">
-            <div className="flex items-center justify-between px-4 py-3">
-              <span className="text-xs font-medium tracking-wide text-foreground">
-                Recent Scans
-              </span>
-              <span className="rounded-md bg-muted/50 px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
-                {history.length}
-              </span>
-            </div>
-            <ScrollArea className="max-h-40 border-t border-border/40">
-              {history.length === 0 ? (
-                <p className="px-4 py-3 text-xs text-muted-foreground">No cached scans yet</p>
-              ) : (
-                <div className="space-y-1 p-2">
-                  {history.map((entry) => (
-                    <div
-                      key={entry.scan_id}
-                      className={`flex items-center gap-1 rounded-md border px-1.5 py-1 ${
-                        entry.scan_id === activeScanId
-                          ? "border-primary/50 bg-primary/5"
-                          : "border-transparent"
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => void openHistoryEntry(entry.scan_id)}
-                        className="min-w-0 flex-1 rounded px-1.5 py-1 text-left transition-colors hover:bg-muted/50"
-                      >
-                        <p className="truncate text-[11px] font-medium" title={entry.root_path}>
-                          {entry.root_path}
-                        </p>
-                        <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
-                          {formatBytes(entry.total_size)} · {formatDuration(entry.elapsed_ms)} ·{" "}
-                          {formatScanTimestamp(entry.created_at_ms)}
-                        </p>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void deleteHistoryEntry(entry.scan_id)}
-                        className="rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                        aria-label="Delete cached scan"
-                      >
-                        <svg
-                          aria-hidden="true"
-                          width="13"
-                          height="13"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M3 6h18" />
-                          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                          <path d="M10 11v6" />
-                          <path d="M14 11v6" />
-                        </svg>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </ScrollArea>
-          </div>
-
-          <div className="flex items-center justify-between border-b border-border/40 px-4 py-3">
-            <span className="text-xs font-medium tracking-wide text-foreground">Contents</span>
-            <span className="rounded-md bg-muted/50 px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
-              {currentChildren.length}
-            </span>
-          </div>
-          <ScrollArea className="min-h-0 flex-1">
-            <FolderTree
-              key={activeScanId ?? "empty"}
-              rootChildren={currentChildren}
-              onNavigate={drillDown}
+        <div className="h-[42%] min-h-36 shrink-0 px-5" aria-busy={children === null}>
+          {children && (
+            <Treemap
+              nodes={children}
+              total={current.size}
+              folderName={folderName}
+              highlightedId={highlightedId}
+              selectedId={selectedId}
+              onHighlight={setHighlightedId}
+              onSelect={(node) => setSelectedId(node.id)}
+              onOpen={openFolder}
             />
-          </ScrollArea>
+          )}
+        </div>
+
+        <div className="mt-3 min-h-0 flex-1 border-t">
+          <FileList
+            ref={listRef}
+            nodes={sorted}
+            total={current.size}
+            folderName={folderName}
+            sort={sort}
+            onSortChange={setSort}
+            selectedId={selectedId}
+            highlightedId={highlightedId}
+            onSelect={setSelectedId}
+            onHighlight={setHighlightedId}
+            onOpen={openFolder}
+            onReveal={(node) => void reveal(node ? node.id : current.id)}
+            onUp={goUp}
+          />
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
-function formatScanTimestamp(timestampMs: number): string {
-  return new Date(timestampMs).toLocaleString();
+function Breadcrumbs({
+  crumbs,
+  rootTitle,
+  onNavigate,
+}: {
+  crumbs: Crumb[];
+  rootTitle: string;
+  onNavigate: (index: number) => void;
+}) {
+  // Long paths keep the root and the last two folders; the middle goes in a menu.
+  const collapsed = crumbs.length > 4;
+  const hidden = collapsed ? crumbs.slice(1, -2) : [];
+  const visible = collapsed
+    ? [0, crumbs.length - 2, crumbs.length - 1]
+    : crumbs.map((_, index) => index);
+
+  return (
+    <nav aria-label="Folder path" className="min-w-0">
+      <ol className="flex min-w-0 items-center">
+        {visible.map((index, position) => {
+          const crumb = crumbs[index];
+          const last = index === crumbs.length - 1;
+          const name = index === 0 ? rootTitle : crumb.name;
+          return (
+            <Fragment key={crumb.id}>
+              {position > 0 && <Separator />}
+              {collapsed && position === 1 && (
+                <>
+                  <li className="shrink-0">
+                    <Menu>
+                      <MenuTrigger
+                        aria-label="Show hidden folders"
+                        className="flex h-7 items-center rounded-md px-1.5 text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-expanded:bg-muted"
+                      >
+                        <EllipsisIcon />
+                      </MenuTrigger>
+                      <MenuContent>
+                        {hidden.map((item, offset) => (
+                          <MenuItem key={item.id} onClick={() => onNavigate(offset + 1)}>
+                            {item.name}
+                          </MenuItem>
+                        ))}
+                      </MenuContent>
+                    </Menu>
+                  </li>
+                  <Separator />
+                </>
+              )}
+              <li className={last ? "min-w-0" : "min-w-0 shrink"}>
+                {last ? (
+                  <span
+                    aria-current="page"
+                    className="block truncate px-1.5 font-medium"
+                    title={name}
+                    data-tauri-drag-region
+                  >
+                    {name}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate(index)}
+                    title={name}
+                    className="block h-7 max-w-44 truncate rounded-md px-1.5 text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {name}
+                  </button>
+                )}
+              </li>
+            </Fragment>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
+
+function Separator() {
+  return (
+    <li aria-hidden="true" className="shrink-0 text-muted-foreground/60">
+      <ChevronRightIcon className="size-3.5" />
+    </li>
+  );
 }

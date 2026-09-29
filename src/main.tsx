@@ -15,13 +15,28 @@ declare module "@tanstack/react-router" {
   }
 }
 
-// Render the app
-const rootElement = document.getElementById("root")!;
-if (!rootElement.innerHTML) {
-  const root = ReactDOM.createRoot(rootElement);
-  root.render(
-    <StrictMode>
-      <RouterProvider router={router} />
-    </StrictMode>,
-  );
+// Follow the OS light/dark setting.
+const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+const applyColorScheme = () => document.documentElement.classList.toggle("dark", darkQuery.matches);
+applyColorScheme();
+darkQuery.addEventListener("change", applyColorScheme);
+
+async function start() {
+  // In a plain browser (`pnpm dev` without Tauri), serve fake data so the UI can be previewed.
+  if (import.meta.env.DEV && !("__TAURI_INTERNALS__" in window)) {
+    await import("./dev/mock-tauri");
+  }
+
+  // Render the app
+  const rootElement = document.getElementById("root")!;
+  if (!rootElement.innerHTML) {
+    const root = ReactDOM.createRoot(rootElement);
+    root.render(
+      <StrictMode>
+        <RouterProvider router={router} />
+      </StrictMode>,
+    );
+  }
 }
+
+void start();

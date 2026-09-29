@@ -1,33 +1,35 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router";
+import type { CSSProperties } from "react";
 import { Toaster } from "sonner";
-import { UpdateButton } from "@/components/update-button/update-button";
-import { useAutoUpdate } from "@/hooks/use-auto-update";
 
-const RootLayout = () => {
-  const updater = useAutoUpdate();
+import { Sidebar } from "@/components/sidebar";
+import { ScanStoreProvider } from "@/lib/scan-store";
 
+function RootLayout() {
   return (
-    <>
-      <div className="dark grid h-screen grid-rows-[2.75rem_minmax(0,1fr)] text-foreground antialiased">
-        <div className="flex items-center justify-between border-b border-border/40 bg-card/20 px-3">
-          <div data-tauri-drag-region className="h-full flex-1 select-none" />
-          <UpdateButton
-            status={updater.status}
-            availableVersion={updater.availableVersion}
-            progress={updater.progress}
-            isChecking={updater.isChecking}
-            isUnsupported={updater.isUnsupported}
-            downloadUpdate={() => void updater.downloadUpdate()}
-            installUpdate={() => void updater.installUpdate()}
-          />
-        </div>
-        <div className="min-h-0 w-full overflow-hidden">
+    <ScanStoreProvider>
+      <div className="flex h-full">
+        <Sidebar />
+        <main className="flex min-w-0 flex-1 flex-col">
           <Outlet />
-        </div>
+        </main>
       </div>
-      <Toaster theme="dark" position="bottom-right" />
-    </>
+      <Toaster
+        theme="system"
+        position="bottom-right"
+        style={
+          {
+            "--normal-bg": "var(--popover)",
+            "--normal-text": "var(--popover-foreground)",
+            "--normal-border": "var(--border)",
+          } as CSSProperties
+        }
+        toastOptions={{
+          classNames: { actionButton: "!bg-primary !text-primary-foreground !font-medium" },
+        }}
+      />
+    </ScanStoreProvider>
   );
-};
+}
 
 export const Route = createRootRoute({ component: RootLayout });
